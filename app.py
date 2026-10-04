@@ -23,7 +23,7 @@ st.markdown("""<style>
 .rt{background:var(--soft);border:1px solid var(--line);border-radius:18px;padding:14px 16px;margin:0 0 12px}.rt.best{border:2px solid var(--ac)}
 .tm{font-size:1.7rem;font-weight:800;line-height:1.1}.sub{opacity:.72;font-size:.88rem}.sum{font-weight:700;margin:6px 0 2px}
 .tag{display:inline-block;padding:1px 9px;border-radius:99px;background:var(--ac);color:#fff;font-size:.74rem;font-weight:700;margin-right:6px}
-.leg{display:flex;gap:10px;padding:7px 0;border-top:1px dashed var(--line)}.leg .lt{min-width:92px;font-weight:700;font-size:.9rem}.leg .lb{flex:1;font-size:.93rem}
+.leg{display:flex;gap:10px;padding:7px 0;border-top:1px dashed var(--line)}.leg .lt{min-width:92px;font-weight:700;font-size:.9rem}.leg .lb{flex:1;font-size:.93rem}.leg.mute{opacity:.62;font-size:.85rem;padding:4px 0}.leg.mute .lb{font-size:.85rem}
 .nx{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:6px 0 14px}
 .nx>div{background:var(--soft);border:1px solid var(--line);border-radius:16px;padding:12px}.nx .tm{font-size:1.3rem}
 @media(max-width:640px){.hero{padding:14px 16px}.hero h1{font-size:1.25rem}.tm{font-size:1.45rem}.leg .lt{min-width:78px;font-size:.82rem}}
@@ -48,10 +48,20 @@ def planned(cid, secret, o, d, depart_iso, modes, gc, transfer, first, last):
 
 
 def leg_html(l):
-    t = f"{l['start']:%H:%M}–{l['end']:%H:%M}" if l["start"] and l["end"] else (f"約 {l['minutes']} 分" if l["minutes"] else "")
+    tm = f"{l['start']:%H:%M}–{l['end']:%H:%M}" if l["start"] and l["end"] else ""
+    if l["kind"] in ("walk", "wait", "bike"):  # 步行/等車:淡色小字
+        if not l["minutes"] and not tm:
+            return ""
+        extra = f"(約 {l['meters']:,} 公尺)" if l["kind"] == "walk" and l["meters"] else ""
+        dest = f" → {esc(l['to'])}" if l["kind"] == "walk" and l["to"] else ""
+        return (f"<div class='leg mute'><div class='lt'>{tm}</div><div class='lb'>{l['emoji']} {l['label']} "
+                f"{l['minutes'] or 0} 分{extra}{dest}</div></div>")
     place = f"<div class='sub'>{esc(l['from'])} ➜ {esc(l['to'])}</div>" if (l["from"] or l["to"]) else ""
-    dur = f"　<span class='sub'>{T.fmt_min(l['minutes'])}</span>" if l["minutes"] and l["start"] else ""
-    return f"<div class='leg'><div class='lt'>{t}</div><div class='lb'><b>{l['emoji']} {esc(l['line'] or l['label'])}</b>{dur}{place}</div></div>"
+    head = f"<div class='sub'>往 {esc(l['headsign'])}</div>" if l.get("headsign") and l["headsign"] != l["line"] else ""
+    dur = f"　<span class='sub'>{T.fmt_min(l['minutes'])}</span>" if l["minutes"] else ""
+    when = tm or (f"約 {l['minutes']} 分" if l["minutes"] else "")
+    return (f"<div class='leg'><div class='lt'>{when}</div>"
+            f"<div class='lb'><b>{l['emoji']} {esc(l['line'] or l['label'])}</b>{dur}{place}{head}</div></div>")
 
 
 def route_html(r, label="", best=False):
@@ -172,4 +182,19 @@ if go:
                 st.link_button("在 Google 地圖開啟 ↗", T.maps_link(origin["name"], dest["name"], o, d))
 else:
     st.info("輸入起點與終點(或開啟 GPS),選好運具後按「規劃路線」。")
+with st.expander("🔧 TDX 連線診斷(規劃失敗時使用)"):
+    st.caption("會用你的金鑰,以台南站 ➜ 台北車站測試每一種參數寫法,並顯示伺服器的實際回應。")
+    if st.button("開始診斷"):
+        if not (cid and secret):
+            st.error("請先設定 TDX 金鑰。")
+        else:
+            try:
+                tk = token_for(cid, secret)
+                st.success("✅ 金鑰驗證成功,已取得存取權杖")
+                res = T.diagnose(tk, (22.9971, 120.2127), (25.0478, 121.5170), T.tw_now() + pd.Timedelta(minutes=5))
+                st.dataframe(pd.DataFrame(res, columns=["參數寫法", "HTTP", "回應(前 220 字)"]), hide_index=True)
+            except Exception as e:  # noqa: BLE001
+                st.error(str(e))
+if T._STATE["i"] >= 2:
+    st.caption(f"ℹ️ TDX 目前只接受「{T._STATE['name']}」的寫法,轉乘等待與步行上限等進階設定可能未套用。")
 st.caption("路線資料來源:交通部 TDX 運輸資料流通服務平台。班次為規劃參考,實際以各運輸業者公告與現場為準。")
