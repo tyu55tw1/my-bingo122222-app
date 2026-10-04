@@ -197,4 +197,5 @@ with st.expander("🔧 TDX 連線診斷(規劃失敗時使用)"):
                 st.error(str(e))
 if T._STATE["i"] >= 2:
     st.caption(f"ℹ️ TDX 目前只接受「{T._STATE['name']}」的寫法,轉乘等待與步行上限等進階設定可能未套用。")
+st.caption(f"程式版本:{T.VERSION}")
 st.caption("路線資料來源:交通部 TDX 運輸資料流通服務平台。班次為規劃參考,實際以各運輸業者公告與現場為準。")

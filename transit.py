@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
+VERSION = "v3-中文路段"
 TW = timezone(timedelta(hours=8))
 UA = "streamlit-transit-planner/1.0 (personal project)"
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
@@ -200,7 +201,9 @@ def norm_mode(v):
             return (kind,) + MODES[kind]
     if any(k in s for k in ("bike", "bicycle", "youbike", "腳踏車", "單車")):
         return ("bike", "🚲", "單車")
-    return ("other", "🚏", str(v) if v else "移動")
+    if s == "transit":
+        return ("other", "🚏", "搭乘")
+    return ("other", "🚏", str(v) if (v and re.search(r"[^\x00-\x7f]", str(v))) else "其他運具")  # 純英文代碼不顯示
 
 
 def _flat(d, prefix="", depth=0, out=None):
@@ -226,6 +229,63 @@ def _fp(flat, *paths):
     return None
 
 
+_SIDE = {"dep": ("departure", "from", "origin", "start", "startstop", "boarding", "board"),
+         "arr": ("arrival", "to", "destination", "end", "endstop", "alighting", "alight")}
+_NOT_LINE = {"place", "station", "stop", "agency", "operator", "location", "departure", "arrival", "from", "to", "origin", "destination", "start", "end"}
+_LINE_LEAVES = ("shortname", "short_name", "routename", "route_name", "linename", "line_name", "name", "longname", "number", "routeno", "route_no", "trainno", "train_no", "label")
+_NUMERIC_OK = {"number", "routeno", "route_no", "trainno", "train_no"}
+
+
+def _split(k):
+    """'a.b_c.name' → (['a','b','c'], 'name');路徑 token 以 . 與 _ 切開,末段保留原樣。"""
+    parts = k.lower().split(".")
+    return [t for p in parts[:-1] for t in p.split("_") if t], parts[-1]
+
+
+def _scan_mode(flat):
+    for k, v in flat.items():
+        path, leaf = _split(k)
+        if k.lower() != "type" and "place" not in path and isinstance(v, (str, int)) and \
+                leaf in ("mode", "vehicle", "vehicletype", "transporttype", "transit_type", "traffictype", "routetype", "route_type", "category", "type", "kind"):
+            if norm_mode(v)[0] != "other":
+                return v
+    return None
+
+
+def _scan_line(flat):
+    for want in _LINE_LEAVES:
+        for k, v in flat.items():
+            path, leaf = _split(k)
+            if leaf != want or v in (None, "") or _NOT_LINE & set(path):
+                continue
+            if str(v).isdigit() and want not in _NUMERIC_OK:
+                continue
+            return str(v)
+    return None
+
+
+def _scan_place(flat, side):
+    for k, v in flat.items():
+        path, leaf = _split(k)
+        if v in (None, ""):
+            continue
+        if leaf in ("name", "stopname", "stationname") and set(_SIDE[side]) & set(path):
+            return str(v)
+        if leaf.endswith("name") and any(leaf.startswith(p) for p in _SIDE[side]):  # from_name / to_name / startname
+            return str(v)
+    return ""
+
+
+def _scan_time(flat, side):
+    for k, v in flat.items():
+        path, leaf = _split(k)
+        if isinstance(v, str) and v and ("time" in leaf or leaf == "datetime") and (set(_SIDE[side]) & set(path) or any(leaf.startswith(p) for p in _SIDE[side])):
+            t = parse_time(v)
+            if t:
+                return t
+    return None
+
+
 def parse_leg(sec):
     """解析單一路段。支援 HERE 風格(type=pedestrian/transit/waiting + transport/departure/arrival)與扁平欄位兩種寫法。"""
     flat = _flat(sec)
@@ -241,23 +301,32 @@ def parse_leg(sec):
     else:
         raw = _fp(flat, "transport.mode", "mode", "transit_type", "transport_mode", "vehicle.type", "vehicle", "travel_mode", "route_type", "transport.category")
         kind, emoji, label = norm_mode(raw if raw is not None else typ)
+        if kind == "other":  # 欄位名稱不在預期中:掃描所有欄位找運具
+            alt = _scan_mode(flat)
+            if alt is not None:
+                kind, emoji, label = norm_mode(alt)
     line = _fp(flat, "transport.name", "transport.shortName", "transport.short_name", "transport.longName", "route_name", "line_name",
                "routeName", "short_name", "train_no", "train_number", "transport.headsign", "headsign", "name") if kind not in ("walk", "wait") else None
+    if not line and kind not in ("walk", "wait"):
+        line = _scan_line(flat)
     if kind == 3 and not line:
         line = "高鐵"
     st = parse_time(_fp(flat, "departure.time", "departure_time", "start_time", "dep_time", "origin.time", "from.time"))
     en = parse_time(_fp(flat, "arrival.time", "arrival_time", "end_time", "arr_time", "destination.time", "to.time"))
+    st = st or _scan_time(flat, "dep")
+    en = en or _scan_time(flat, "arr")
     secs = _fp(flat, "travelSummary.duration", "travel_summary.duration", "summary.duration", "duration", "travel_time")
     mins = round(secs / 60) if isinstance(secs, (int, float)) else (round((en - st).total_seconds() / 60) if st and en else None)
     meters = _fp(flat, "travelSummary.length", "travel_summary.length", "length", "distance")
     place = lambda *p: str(_fp(flat, *p) or "")
+    frm_scan, to_scan = _scan_place(flat, "dep"), _scan_place(flat, "arr")
     return {"kind": kind, "emoji": emoji, "label": label, "line": str(line or ""), "start": st, "end": en, "minutes": mins,
             "meters": int(meters) if isinstance(meters, (int, float)) else None,
             "headsign": str(_fp(flat, "transport.headsign", "headsign") or "") if kind not in ("walk", "wait") else "",
             "from": place("departure.place.name", "departure.name", "from.name", "from", "origin.name", "origin", "start_stop.name", "start_stop",
-                          "from_name", "departure_stop", "start_name", "start_station"),
+                          "from_name", "departure_stop", "start_name", "start_station") or frm_scan,
             "to": place("arrival.place.name", "arrival.name", "to.name", "to", "destination.name", "destination", "end_stop.name", "end_stop",
-                        "to_name", "arrival_stop", "end_name", "end_station")}
+                        "to_name", "arrival_stop", "end_name", "end_station") or to_scan}
 
 
 def _sections(sec):
