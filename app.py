@@ -63,8 +63,8 @@ def route_html(r, label="", best=False):
 
 
 # ── 金鑰 ──
-cid = st.secrets.get("TDX_CLIENT_ID", "") if hasattr(st, "secrets") else ""
-secret = st.secrets.get("TDX_CLIENT_SECRET", "") if hasattr(st, "secrets") else ""
+cid = st.secrets.get("TDX_CLIENT_ID", "tyu55.tw-abc24f3b-c700-4ee8") if hasattr(st, "secrets") else "tyu55.tw-abc24f3b-c700-4ee8"
+secret = st.secrets.get("TDX_CLIENT_SECRET", "ece1290e-a0c7-4690-9748-b7afdd22db6e") if hasattr(st, "secrets") else "ece1290e-a0c7-4690-9748-b7afdd22db6e"
 if not (cid and secret):
     with st.expander("🔑 設定 TDX 金鑰(免費,只需一次)", expanded=True):
         st.caption("路線規劃使用交通部 TDX 平台。到 tdx.transportdata.tw 免費註冊 → 會員中心 → 資料服務 → API金鑰,貼上 Client Id / Secret。"
