@@ -63,9 +63,17 @@ def route_html(r, label="", best=False):
 
 
 # ── 金鑰 ──
-cid = st.secrets.get("TDX_CLIENT_ID", "tyu55.tw-abc24f3b-c700-4ee8") if hasattr(st, "secrets") else "tyu55.tw-abc24f3b-c700-4ee8"
-secret = st.secrets.get("TDX_CLIENT_SECRET", "ece1290e-a0c7-4690-9748-b7afdd22db6e") if hasattr(st, "secrets") else "ece1290e-a0c7-4690-9748-b7afdd22db6e"
-if not (cid and secret):
+def _secret(k):
+    try:  # 沒有 secrets 檔時,部分 Streamlit 版本會丟例外
+        return str(st.secrets.get(k, "") or "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+cid, secret = _secret("TDX_CLIENT_ID"), _secret("TDX_CLIENT_SECRET")
+if cid and secret:
+    st.caption("🔑 已載入 TDX 金鑰")
+else:
     with st.expander("🔑 設定 TDX 金鑰(免費,只需一次)", expanded=True):
         st.caption("路線規劃使用交通部 TDX 平台。到 tdx.transportdata.tw 免費註冊 → 會員中心 → 資料服務 → API金鑰,貼上 Client Id / Secret。"
                    "部署時建議放在 Streamlit 的 Secrets(TDX_CLIENT_ID、TDX_CLIENT_SECRET),就不用每次輸入。")
