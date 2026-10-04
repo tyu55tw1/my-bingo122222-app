@@ -14,6 +14,13 @@ except Exception:  # noqa: BLE001  未安裝時改用 IP 概略定位
     streamlit_geolocation = None
 
 st.set_page_config(page_title="智慧交通規劃", page_icon="🚉", layout="centered")
+# 檢查 transit.py 是否為配套的新版(只更新 app.py 而忘了更新 transit.py 是最常見的部署錯誤)
+_NEED = ("plan_with_next", "geocode", "ip_location", "diagnose", "_STATE", "VERSION", "fmt_min", "maps_link", "tw_now", "TW", "PREFS", "MODES", "FIRST_MILE", "parse_route")
+_MISSING = [n for n in _NEED if not hasattr(T, n)]
+if _MISSING:
+    st.error("⚠️ 偵測到 transit.py 不是最新版(缺少:" + "、".join(_MISSING) + ")。請把 **app.py 與 transit.py 兩個檔案一起**更新到 GitHub,"
+             "再到 Streamlit 的 Manage app → Reboot app 重新啟動。")
+    st.stop()
 esc = lambda x: _html.escape(str(x), quote=True)
 st.markdown("""<style>
 :root{--soft:rgba(128,128,128,.11);--line:rgba(128,128,128,.28);--ac:#d9441a}
@@ -195,7 +202,7 @@ with st.expander("🔧 TDX 連線診斷(規劃失敗時使用)"):
                 st.dataframe(pd.DataFrame(res, columns=["參數寫法", "HTTP", "回應(前 220 字)"]), hide_index=True)
             except Exception as e:  # noqa: BLE001
                 st.error(str(e))
-if T._STATE["i"] >= 2:
-    st.caption(f"ℹ️ TDX 目前只接受「{T._STATE['name']}」的寫法,轉乘等待與步行上限等進階設定可能未套用。")
-st.caption(f"程式版本:{T.VERSION}")
+if getattr(T, "_STATE", {"i": 0})["i"] >= 2:
+    st.caption(f"ℹ️ TDX 目前只接受「{getattr(T, '_STATE', {'name': ''})['name']}」的寫法,轉乘等待與步行上限等進階設定可能未套用。")
+st.caption(f"程式版本:{getattr(T, 'VERSION', '未知')}")
 st.caption("路線資料來源:交通部 TDX 運輸資料流通服務平台。班次為規劃參考,實際以各運輸業者公告與現場為準。")
