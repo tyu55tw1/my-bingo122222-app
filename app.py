@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-VERSION = "v5-上車站時刻"
+VERSION = "v6-附近公車"
 TW = timezone(timedelta(hours=8))
 UA = "streamlit-transit-planner/1.0 (personal project)"
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
@@ -408,7 +408,8 @@ def tdx_get(token, path, wait=20, **params):
     """查 TDX 基本資料。免費金鑰每分鐘只能查 5 次:被限流時,要等的秒數不超過 wait 就自動等一下再查,否則請使用者稍後再試。"""
     import time as _time
     for attempt in range(2):
-        r = _http("GET", BASIC_URL + path, params={"$format": "JSON", **params},
+        base = BASIC_URL.rsplit("/basic", 1)[0] if path.startswith("/advanced/") else BASIC_URL   # 附近站牌在 advanced 底下
+        r = _http("GET", base + path, params={"$format": "JSON", **params},
                   headers={"authorization": f"Bearer {token}"})
         if r.status_code == 429:
             try:
@@ -654,7 +655,7 @@ def board_times(sched, stops, long_name, headsign, stop_name, stop_ll, board_hm,
         if k == 0:
             off = 0
         else:
-            expect = (k or 0) * 1.3   # 平均每站大約 1～1.5 分鐘
+            expect = (k or 0) * 2.0   # 平均每站約 2 分鐘(台南紅4:第 16 站、起點發車後 32 分)
             cands = [t for t in firsts if board is not None and 0 <= board - t <= 150]
             off = (board - min(cands, key=lambda t: abs(board - t - expect))) if cands else round(expect)
             out["推估"] = True
@@ -684,6 +685,84 @@ def stop_eta(token, city, route, stop_uid, stop_name, direction, wait=20):
     return out
 
 
+# ── 「我附近的公車」:附近站牌 → 經過的路線 → 即時到站 ──────────
+WALK_M_PER_MIN = 70   # 走路速度(公尺/分),用來算走到站牌要幾分
+
+
+def meters(a, b):
+    """兩個 (緯度, 經度) 之間的大約距離(公尺)。"""
+    import math
+    dy = (a[0] - b[0]) * 111000
+    dx = (a[1] - b[1]) * 111000 * math.cos(math.radians((a[0] + b[0]) / 2))
+    return (dx * dx + dy * dy) ** 0.5
+
+
+def nearby_stops(token, lat, lon, radius=300, wait=20):
+    """附近 radius 公尺內的公車站牌:[{uid, 站名, 位置, 縣市, 距離}],由近到遠。查 1 次。"""
+    j = tdx_get(token, "/advanced/v2/Bus/Stop/NearBy", wait=wait,
+                **{"$spatialFilter": f"nearby({lat}, {lon}, {int(radius)})", "$select": "StopUID,StopName,StopPosition,City"})
+    out = []
+    for s in j:
+        p = s.get("StopPosition") or {}
+        ll = (p.get("PositionLat"), p.get("PositionLon"))
+        if None in ll or not s.get("City"):
+            continue
+        out.append({"uid": s["StopUID"], "站名": _zh(s.get("StopName")), "位置": ll, "縣市": s["City"],
+                    "距離": round(meters((lat, lon), ll))})
+    return sorted(out, key=lambda x: x["距離"])
+
+
+def stop_routes(token, city, uids, wait=20):
+    """經過這些站牌的子路線(站序原始資料,含每條子路線完整的站序)。查 1 次。"""
+    f = " or ".join(f"Stops/any(d: d/StopUID eq '{u}')" for u in uids)
+    return tdx_get(token, _bus_path("StopOfRoute", city), wait=wait, **{"$filter": f})
+
+
+def stops_eta(token, city, uids, wait=20):
+    """這些站牌所有路線的即時到站原始資料。查 1 次。"""
+    f = " or ".join(f"StopUID eq '{u}'" for u in uids)
+    return tdx_get(token, _bus_path("EstimatedTimeOfArrival", city), wait=wait, **{"$filter": f})
+
+
+def eta_text(e):
+    """一筆即時到站 → (到站分鐘或 None, 文字)。"""
+    sec, stat = e.get("EstimateTime"), e.get("StopStatus", 0)
+    if sec is not None and stat in (0, None):
+        return sec // 60, ("進站中" if sec < 60 else f"還有 {sec // 60} 分")
+    if e.get("NextBusTime"):
+        t = str(e["NextBusTime"])[11:16]
+        return None, f"{_ETA_STATUS.get(stat, '')} 下一班約 {t}".strip()
+    return None, _ETA_STATUS.get(stat, "沒有即時資料")
+
+
+def nearby_board(stops, routes, etas):
+    """整理成「站牌 → 經過的公車」:[{站名, 距離, 走路, 路線:[{路線, 往, 子路線, uid, 方向, 分鐘, 即時, raw}]}]。
+    同名、距離差不多的站牌(對向、不同業者)併成一組,依距離排序。"""
+    by_uid = {s["uid"]: s for s in stops}
+    eta = {(e.get("SubRouteUID") or e.get("RouteUID"), e.get("StopUID")): e for e in etas}
+    eta_r = {(_zh(e.get("RouteName")), e.get("Direction", 0), e.get("StopUID")): e for e in etas}
+    groups = {}
+    for r in routes:
+        name = _zh(r.get("SubRouteName")) or _zh(r.get("RouteName"))
+        for s in r.get("Stops") or []:
+            st = by_uid.get(s.get("StopUID"))
+            if not st:
+                continue
+            e = eta.get((r.get("SubRouteUID"), st["uid"])) or eta_r.get((_zh(r.get("RouteName")), r.get("Direction", 0), st["uid"]))
+            mins, txt = eta_text(e) if e else (None, "沒有即時資料")
+            # 「往哪裡」:子路線名稱「…→後壁厝(繞中華醫事科大)」取箭頭後面;沒有箭頭才用最後一站
+            last = re.sub(r"[((].*$", "", name.split("→")[-1]).strip() if "→" in name else                 _zh((r.get("Stops") or [{}])[-1].get("StopName"))
+            g = groups.setdefault((st["站名"], st["距離"] // 60), {"站名": st["站名"], "距離": st["距離"], "路線": []})
+            g["距離"] = min(g["距離"], st["距離"])
+            g["路線"].append({"路線": _zh(r.get("RouteName")), "往": last, "子路線": name, "uid": st["uid"], "縣市": st["縣市"],
+                            "方向": r.get("Direction", 0), "分鐘": mins, "即時": txt, "raw": r})
+    out = sorted(groups.values(), key=lambda g: g["距離"])
+    for g in out:
+        g["走路"] = max(1, round(g["距離"] / WALK_M_PER_MIN))
+        g["路線"].sort(key=lambda x: (x["分鐘"] is None, x["分鐘"] if x["分鐘"] is not None else 0, x["路線"], x["方向"]))
+    return out
+
+
 def fmt_min(m):
     m = int(m or 0)
     return f"{m // 60} 小時 {m % 60} 分" if m >= 60 else f"{m} 分鐘"
@@ -704,6 +783,28 @@ except Exception:  # noqa: BLE001  未安裝時改用 IP 概略定位
     streamlit_geolocation = None
 
 st.set_page_config(page_title="智慧交通規劃", page_icon="🚉", layout="centered")
+_GPS = {"shown": False, "loc": None}   # 每次畫面重跑都會重設:GPS 元件一頁只放一次
+
+
+def my_location(what):
+    """目前位置(GPS)。路線規劃和附近公車都要用:GPS 元件只放在第一個用到的地方,第二個地方共用同一個結果。
+    沒裝 streamlit-geolocation 時改用 IP 概略位置。"""
+    if not streamlit_geolocation:
+        ip = ((st.context.headers.get("X-Forwarded-For", "") if hasattr(st, "context") else "") or "").split(",")[0].strip()
+        loc = T.ip_location(ip) if ip else None
+        st.caption("未安裝 streamlit-geolocation,改用 IP 概略位置(誤差可能達數公里)。" if loc else f"無法定位,請改為手動輸入{what}。")
+        return loc
+    if not _GPS["shown"]:
+        _GPS["shown"] = True
+        loc = streamlit_geolocation() or {}
+        if loc.get("latitude") is not None:
+            _GPS["loc"] = {"name": "我的位置(GPS)", "lat": float(loc["latitude"]), "lon": float(loc["longitude"])}
+            st.session_state["last_gps"] = _GPS["loc"]
+        else:
+            st.info("請按上方定位按鈕並允許瀏覽器取得位置。")
+    else:
+        st.caption("使用「路線規劃」分頁取得的 GPS 位置。")
+    return _GPS["loc"] or st.session_state.get("last_gps")
 esc = lambda x: _html.escape(str(x), quote=True)
 st.markdown("""<style>
 :root{--soft:rgba(128,128,128,.11);--line:rgba(128,128,128,.28);--ac:#d9441a}
@@ -764,6 +865,28 @@ def c_city(lat, lon):
 @st.cache_data(ttl=6 * 3600, show_spinner=False)
 def c_bus_raw(cid, secret, city, route):
     return T.bus_raw(token_for(cid, secret), city, route, wait=70)
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def c_near_stops(cid, secret, lat, lon, radius):
+    return T.nearby_stops(token_for(cid, secret), lat, lon, radius, wait=70)
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def c_stop_routes(cid, secret, city, uids):
+    return T.stop_routes(token_for(cid, secret), city, list(uids), wait=70)
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def c_stops_eta(cid, secret, city, uids):
+    return T.stops_eta(token_for(cid, secret), city, list(uids), wait=70)
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def c_bus_sched(cid, secret, city, route):
+    """只查時刻表(1 次);站序已經在附近公車查過了。"""
+    return T.tdx_get(token_for(cid, secret), T._bus_path("Schedule", city), wait=70,
+                     **{"$filter": T._route_filter(T._route_zh(route))})
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -978,16 +1101,7 @@ with tab_plan:
     use_gps = st.toggle("📍 使用目前位置當起點(GPS)")
     origin = None
     if use_gps:
-        if streamlit_geolocation:
-            loc = streamlit_geolocation() or {}
-            if loc.get("latitude") is not None:
-                origin = {"name": "我的位置(GPS)", "lat": float(loc["latitude"]), "lon": float(loc["longitude"])}
-            else:
-                st.info("請按上方定位按鈕並允許瀏覽器取得位置。")
-        else:
-            ip = ((st.context.headers.get("X-Forwarded-For", "") if hasattr(st, "context") else "") or "").split(",")[0].strip()
-            origin = T.ip_location(ip) if ip else None
-            st.caption("未安裝 streamlit-geolocation,改用 IP 概略位置(誤差可能達數公里)。" if origin else "無法定位,請改為手動輸入起點。")
+        origin = my_location("起點")
     else:
         q = st.text_input("起點", placeholder="例如:中華醫事科技大學、台南火車站、23.0,120.2")
         cands = geo(q) if q.strip() else []
@@ -1159,10 +1273,107 @@ with tab_tra:
 with tab_hsr:
     rail_tab("thsr", ("台南", "台北"))
 
+def _leave_text(mins, walk):
+    """公車還有 mins 分到站、走到站牌要 walk 分 → 「幾點前出門」。"""
+    if mins is None:
+        return ""
+    if mins < walk:
+        return "⚠️ 走過去來不及這班"
+    leave = T.tw_now() + pd.Timedelta(minutes=mins - walk - BUFFER_MIN)
+    if leave <= T.tw_now():
+        return "🏃 現在就出門"
+    return f"{leave:%H:%M} 前出門(還有 {mins - walk - BUFFER_MIN} 分)"
+
+
+def near_section():
+    """📍 我附近的公車:定位(GPS 或打地名)→ 附近站牌 → 經過的公車、即時到站、幾點前出門 → 點路線看這站今天的時刻。"""
+    st.markdown("#### 📍 我附近的公車")
+    here = None
+    if st.toggle("📍 用目前位置(GPS)", key="near_gps"):
+        here = my_location("所在位置")
+    else:
+        q = st.text_input("我現在在哪", placeholder="例如:中華醫事科技大學、台南火車站、23.0,120.2", key="near_q")
+        cands = geo(q) if q.strip() else []
+        if cands:
+            here = cands[st.selectbox("地點候選", range(len(cands)), format_func=lambda i: cands[i]["name"], key="near_pick")
+                         if len(cands) > 1 else 0]
+        elif q.strip():
+            st.warning("找不到這個地點,請換個說法(例如加上縣市)或直接輸入「緯度,經度」。")
+    c1, c2, c3 = st.columns([2, 1, 1], vertical_alignment="bottom")
+    radius = c1.select_slider("找多遠的站牌", [200, 300, 500, 800], value=300, key="near_r", format_func=lambda m: f"{m} 公尺")
+    if c2.button("🔎 查附近公車", type="primary", key="near_go", disabled=not here):
+        st.session_state["near"] = (here["name"], round(here["lat"], 5), round(here["lon"], 5), radius)
+    c3.button("🔄 更新即時到站", key="near_refresh", disabled="near" not in st.session_state,
+              help="即時到站 30 秒內重複按會用同一份資料")
+    near = st.session_state.get("near")
+    if not near:
+        st.caption("輸入你現在的位置(或開 GPS)後按「查附近公車」:會列出附近站牌有哪些公車、還有幾分到、幾點前要出門。")
+        return
+    name, lat, lon, rad = near
+    try:
+        with st.spinner("查詢附近站牌和即時到站…(TDX 每分鐘只能查 5 次,第一次查會用掉 3 次,額度不夠時會自動等一下)"):
+            stops = c_near_stops(cid, secret, lat, lon, rad)
+            routes, etas = [], []
+            for city in sorted({s["縣市"] for s in stops}):
+                uids = tuple(sorted(s["uid"] for s in stops if s["縣市"] == city))
+                routes += c_stop_routes(cid, secret, city, uids)
+                etas += c_stops_eta(cid, secret, city, uids)
+    except Exception as e:  # noqa: BLE001
+        st.error(str(e))
+        return
+    groups = T.nearby_board(stops, routes, etas)
+    st.markdown(f"**{esc(name)}** 附近 {rad} 公尺・{T.tw_now():%H:%M} 查詢")
+    if not groups:
+        st.warning(f"{rad} 公尺內沒有公車站牌,可以把範圍調大一點。")
+        return
+    if not etas:
+        st.caption("目前這些站牌都沒有即時到站資料(可能還沒發車、末班已過或今天未營運)。點「今天時刻」可以看全天的時刻表。")
+    for gi, g in enumerate(groups):
+        with st.container(border=True):
+            st.markdown(f"**🚏 {esc(g['站名'])}**　<span class='sub'>{g['距離']} 公尺・走路約 {g['走路']} 分</span>",
+                        unsafe_allow_html=True)
+            for ri, r in enumerate(g["路線"]):
+                a, b, c, d = st.columns([3, 2, 3, 2], vertical_alignment="center")
+                a.markdown(f"**🚌 {esc(r['路線'])}** <span class='sub'>往 {esc(r['往'])}</span>"
+                           f"<div class='sub' style='font-size:.75rem'>{esc(r['子路線'])}</div>", unsafe_allow_html=True)
+                b.markdown(f"**{esc(r['即時'])}**" if r["分鐘"] is not None else f"<span class='sub'>{esc(r['即時'])}</span>",
+                           unsafe_allow_html=True)
+                c.markdown(esc(_leave_text(r["分鐘"], g["走路"])))
+                key = f"near_tt_{gi}_{ri}_{r['uid']}_{r['方向']}"
+                if d.button("今天時刻", key=key + "_btn"):
+                    st.session_state[key] = not st.session_state.get(key)
+                if st.session_state.get(key):
+                    try:
+                        with st.spinner("查詢這條路線的時刻表…"):
+                            sched = c_bus_sched(cid, secret, r["縣市"], r["路線"])
+                    except Exception as e:  # noqa: BLE001
+                        st.error(str(e))
+                        continue
+                    board = (f"{T.tw_now() + pd.Timedelta(minutes=r['分鐘']):%H:%M}" if r["分鐘"] is not None else None)
+                    info = T.board_times(sched, [r["raw"]], r["子路線"], r["往"], g["站名"], None, board, T.tw_now().date())
+                    if info and info["時刻"]:
+                        st.markdown(f"<div class='sub'>{esc(r['子路線'])}・{esc(g['站名'])} 今天的到站時間</div>", unsafe_allow_html=True)
+                        upcoming = [t for t in info["時刻"] if t >= f"{T.tw_now():%H:%M}"]
+                        st.markdown(_chips(info["時刻"], upcoming[0] if upcoming else None, f"{T.tw_now():%H:%M}", g["走路"],
+                                           info["推估"]), unsafe_allow_html=True)
+                        if info["推估"]:
+                            st.caption(("用現在的即時到站推算全天時刻。" if board else
+                                        "現在沒有即時到站可以對時,全天時刻是用站序粗估的,可能差 10 分鐘以上。") + "以即時到站為準。")
+                    elif info and info["班距"]:
+                        st.dataframe(pd.DataFrame([{"時段": f"{x}–{y}", "班距": f"每 {lo}–{hi} 分" if lo != hi else f"每 {lo} 分"}
+                                                   for x, y, lo, hi in info["班距"]]), hide_index=True, use_container_width=True)
+                    else:
+                        st.caption("今天沒有這個方向的時刻表資料。")
+    st.caption(f"「幾點前出門」= 公車到站時間 − 走到站牌的時間 − 緩衝 {BUFFER_MIN} 分。走路以每分鐘 {T.WALK_M_PER_MIN} 公尺估算。")
+
+
 with tab_bus:
     if not (cid and secret):
         st.info("請先在上方設定 TDX 金鑰。")
     else:
+        near_section()
+        st.divider()
+        st.markdown("#### 🔍 用路線號碼查")
         cities = list(T.BUS_CITIES)
         city_name = st.selectbox("縣市", cities, index=cities.index("臺南市"), key="bus_city")
         city = T.BUS_CITIES[city_name]
