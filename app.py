@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-VERSION = "v6-附近公車"
+VERSION = "v7-選上車站"
 TW = timezone(timedelta(hours=8))
 UA = "streamlit-transit-planner/1.0 (personal project)"
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
@@ -1367,6 +1367,80 @@ def near_section():
     st.caption(f"「幾點前出門」= 公車到站時間 − 走到站牌的時間 − 緩衝 {BUFFER_MIN} 分。走路以每分鐘 {T.WALK_M_PER_MIN} 公尺估算。")
 
 
+def stop_section(city, route):
+    """🚏 選方向 + 上車站 → 這站的即時到站、下一班幾點、今天全部到站時間。"""
+    try:
+        with st.spinner("載入站牌清單…"):
+            sched, subs = c_bus_raw(cid, secret, city, route)
+    except Exception as e:  # noqa: BLE001
+        st.error(str(e))
+        return
+    subs = [r for r in subs if r.get("Stops")]
+    if not subs:
+        st.caption("TDX 沒有這條路線的站牌資料。")
+        return
+    names = [_zh_name(r) for r in subs]
+    c1, c2 = st.columns(2)
+    si = c1.selectbox("方向", range(len(subs)), format_func=lambda i: names[i], key=f"bus_dir_{city}_{route}")
+    sub = subs[si]
+    seq = sub["Stops"]
+    ki = c2.selectbox("上車站(可以直接打字搜尋)", range(len(seq)), index=None, placeholder="選你要上車的站",
+                      format_func=lambda i: f"{i + 1}. {T._zh(seq[i].get('StopName'))}", key=f"bus_stop_{city}_{route}_{si}")
+    if ki is None:
+        st.caption("選好上車站,就會顯示這站下一班車幾點到。")
+        return
+    stop = seq[ki]
+    stop_name, uid, direction = T._zh(stop.get("StopName")), stop.get("StopUID"), sub.get("Direction", 0)
+    now = T.tw_now()
+    now_hm = f"{now:%H:%M}"
+    # 即時到站(1 次查詢,30 秒內共用)
+    mins, live = None, None
+    try:
+        with st.spinner("查詢這站的即時到站…"):
+            etas = c_stops_eta(cid, secret, city, (uid,)) if uid else []
+        e = next((x for x in etas if sub.get("SubRouteUID") and x.get("SubRouteUID") == sub.get("SubRouteUID")), None) or \
+            next((x for x in etas if T._zh(x.get("RouteName")) == T._zh(sub.get("RouteName"))
+                  and x.get("Direction", 0) == direction), None)
+        if e:
+            mins, live = T.eta_text(e)
+    except Exception as ex:  # noqa: BLE001
+        st.caption(f"即時到站查不到:{ex}")
+    board = f"{now + pd.Timedelta(minutes=mins):%H:%M}" if mins is not None else None
+    info = T.board_times(sched, [sub], names[si], "", stop_name, None, board, now.date())
+    times = (info or {}).get("時刻") or []
+    upcoming = [t for t in times if t >= now_hm]
+    approx = bool(info and info["推估"])
+    with st.container(border=True):
+        st.markdown(f"**🚏 {esc(stop_name)}**　<span class='sub'>{esc(names[si])}・第 {ki + 1} 站</span>", unsafe_allow_html=True)
+        if mins is not None:
+            st.markdown(f"<div class='tm'>{esc(live)}</div><div class='sub'>即時到站・約 {board} 到</div>", unsafe_allow_html=True)
+        elif upcoming:
+            left = T._hm_min(upcoming[0]) - T._hm_min(now_hm)
+            st.markdown(f"<div class='tm'>下一班{'約 ' if approx else ' '}{upcoming[0]}</div>"
+                        f"<div class='sub'>還有 {left} 分{'・' + esc(live) if live else ''}</div>", unsafe_allow_html=True)
+        elif times:
+            st.markdown("**今天這站的班次都過了。**" + (f" <span class='sub'>{esc(live)}</span>" if live else ""),
+                        unsafe_allow_html=True)
+        elif live:
+            st.markdown(f"**{esc(live)}**")
+        if times:
+            st.markdown(f"<div class='sub'>今天這站的到站時間{'(推估)' if approx else ''}</div>", unsafe_allow_html=True)
+            st.markdown(_chips(times, upcoming[0] if upcoming else None, now_hm, None, approx), unsafe_allow_html=True)
+        elif info and info["班距"]:
+            st.dataframe(pd.DataFrame([{"時段": f"{a}–{b}", "班距": f"每 {lo}–{hi} 分" if lo != hi else f"每 {lo} 分"}
+                                       for a, b, lo, hi in info["班距"]]), hide_index=True, use_container_width=True)
+        elif mins is None and not live:
+            st.caption("這站今天沒有時刻表資料。")
+        if approx:
+            st.caption(("用現在的即時到站推算全天時刻。" if board else
+                        "這條路線只有起點站發車時間,這站的時間是用站序粗估的,可能差 10 分鐘以上。") + "以即時到站為準。")
+        st.button("🔄 更新即時到站", key=f"bus_stop_refresh_{city}_{route}", help="即時到站 30 秒內重複按會用同一份資料")
+
+
+def _zh_name(r):
+    return T._zh(r.get("SubRouteName")) or T._zh(r.get("RouteName"))
+
+
 with tab_bus:
     if not (cid and secret):
         st.info("請先在上方設定 TDX 金鑰。")
@@ -1385,6 +1459,7 @@ with tab_bus:
             st.error(str(e))
         route = st.selectbox("路線(可以直接打字搜尋)", routes, index=None, placeholder="例如:21、綠幹線、1610", key=f"bus_route_{city}")
         if route:
+            stop_section(city, route)
             day = T.tw_now().date()
             try:
                 with st.spinner("查詢時刻表…"):
