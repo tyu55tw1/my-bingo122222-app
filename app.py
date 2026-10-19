@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-VERSION = "v8-地圖動態"
+VERSION = "v8.1-打字選站"
 TW = timezone(timedelta(hours=8))
 UA = "streamlit-transit-planner/1.0 (personal project)"
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
@@ -1816,9 +1816,11 @@ def station_input(col, label, names, key):
     txt_key = f"{key}_txt"
     if txt_key not in st.session_state:
         st.session_state[txt_key] = st.session_state.get(key, "")
-    typed = col.text_input(label, key=txt_key, placeholder="打站名，例如：台南、左營")
+    typed = col.text_input(label, key=txt_key, placeholder="打站名，例如：台南、左營",
+                           help="打完按鍵盤的「完成」或 Enter（或點旁邊空白處），才會出現候選站")
     t = _norm_station(typed)
     if not t:
+        col.caption("打站名後按「完成」")
         return None
     if t in names:
         st.session_state[key] = t
