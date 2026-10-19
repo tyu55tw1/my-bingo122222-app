@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-VERSION = "v8.5.2-新增方塊"
+VERSION = "v8.5.3-到站說明"
 TW = timezone(timedelta(hours=8))
 UA = "streamlit-transit-planner/1.0 (personal project)"
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
@@ -1543,7 +1543,7 @@ def fav_tiles(favs):
             cands = etas.get((x["stop"], x["route"]), [])
             e = next((c for c in cands if c.get("SubRouteUID") == x.get("sub")), None) or \
                 next((c for c in cands if c.get("Direction", 0) == x.get("dir", 0)), None)
-            cls, txt = eta_badge(e)
+            cls, txt = eta_badge(e) if e else ("mute", "暫無到站資料")   # 收班後 TDX 常常整筆都沒有
             tiles.append(_ftile(f"🚌 {esc(x['route'])} <span class='tsub'>往 {esc(x.get('to', ''))}</span>", esc(txt),
                                 f"🚏 {esc(x['name'])}",
                                 link=_qs(p="bus", city=x["city"], route=x["route"], sub=x.get("sub"), stop=x["stop"]),
