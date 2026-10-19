@@ -4,3 +4,4 @@ pandas
 pydeck
 streamlit-geolocation
 streamlit_js_eval
+streamlit-keyup

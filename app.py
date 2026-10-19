@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-VERSION = "v8.1-打字選站"
+VERSION = "v8.2-邊打邊選站"
 TW = timezone(timedelta(hours=8))
 UA = "streamlit-transit-planner/1.0 (personal project)"
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
@@ -1796,12 +1796,24 @@ def _norm_station(t):
     return _RAIL_ALIAS.get(t, t)
 
 
+try:
+    from st_keyup import st_keyup          # 每打一個字就更新（不用按完成），候選站邊打邊出現
+except ImportError:
+    st_keyup = None
+
+
+def _bump(key):
+    """輸入框換一個新的 key 重新建立，裡面的字才會換成程式設定的內容（選了候選站、按了 ⇄）。"""
+    st.session_state[f"{key}_v"] = st.session_state.get(f"{key}_v", 0) + 1
+
+
 def _swap_station(kind):
     """⇄：起訖站對調（選好的站和輸入框的字一起換）。"""
     for a, b in ((f"{kind}_o", f"{kind}_d"), (f"{kind}_o_txt", f"{kind}_d_txt")):
         st.session_state[a], st.session_state[b] = st.session_state.get(b), st.session_state.get(a)
-    for k in (f"{kind}_o_pick", f"{kind}_d_pick"):
-        st.session_state.pop(k, None)
+    for k in (f"{kind}_o", f"{kind}_d"):
+        st.session_state.pop(f"{k}_pick", None)
+        _bump(k)
 
 
 def _pick_station(key):
@@ -1809,6 +1821,7 @@ def _pick_station(key):
     if pick:
         st.session_state[key] = pick
         st.session_state[f"{key}_txt"] = pick
+        _bump(key)
 
 
 def station_input(col, label, names, key):
@@ -1816,11 +1829,17 @@ def station_input(col, label, names, key):
     txt_key = f"{key}_txt"
     if txt_key not in st.session_state:
         st.session_state[txt_key] = st.session_state.get(key, "")
-    typed = col.text_input(label, key=txt_key, placeholder="打站名，例如：台南、左營",
-                           help="打完按鍵盤的「完成」或 Enter（或點旁邊空白處），才會出現候選站")
+    if st_keyup:
+        with col:
+            typed = st_keyup(label, value=st.session_state[txt_key], key=f"{key}_ku{st.session_state.get(f'{key}_v', 0)}",
+                             debounce=300, placeholder="打站名，例如：台南、左營")
+        st.session_state[txt_key] = typed or ""
+    else:
+        typed = col.text_input(label, key=txt_key, placeholder="打站名，例如：台南、左營",
+                               help="打完按鍵盤的「完成」或 Enter（或點旁邊空白處），才會出現候選站")
     t = _norm_station(typed)
     if not t:
-        col.caption("打站名後按「完成」")
+        col.caption("打站名，邊打會邊出現候選站" if st_keyup else "打站名後按「完成」")
         return None
     if t in names:
         st.session_state[key] = t
