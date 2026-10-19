@@ -1786,6 +1786,53 @@ def _after_filter(day, key):
     return f"{t:%H:%M}"
 
 
+_RAIL_ALIAS = {"北車": "台北", "南車": "台南", "高車": "高雄", "中車": "台中"}
+
+
+def _norm_station(t):
+    """打的站名 → 標準寫法：去空白、臺→台、去掉結尾的「站」（「台北車站」→ 台北）、常見簡稱。"""
+    t = re.sub(r"\s+", "", str(t or "")).replace("臺", "台")
+    t = re.sub(r"(車站|站)$", "", t) if len(t) > 2 else t
+    return _RAIL_ALIAS.get(t, t)
+
+
+def _swap_station(kind):
+    """⇄：起訖站對調（選好的站和輸入框的字一起換）。"""
+    for a, b in ((f"{kind}_o", f"{kind}_d"), (f"{kind}_o_txt", f"{kind}_d_txt")):
+        st.session_state[a], st.session_state[b] = st.session_state.get(b), st.session_state.get(a)
+    for k in (f"{kind}_o_pick", f"{kind}_d_pick"):
+        st.session_state.pop(k, None)
+
+
+def _pick_station(key):
+    pick = st.session_state.get(f"{key}_pick")
+    if pick:
+        st.session_state[key] = pick
+        st.session_state[f"{key}_txt"] = pick
+
+
+def station_input(col, label, names, key):
+    """直接打站名（不用在下拉選單裡找）：完全一樣就選定；只打一部分就列出候選，點一下選。回傳站名或 None。"""
+    txt_key = f"{key}_txt"
+    if txt_key not in st.session_state:
+        st.session_state[txt_key] = st.session_state.get(key, "")
+    typed = col.text_input(label, key=txt_key, placeholder="打站名，例如：台南、左營")
+    t = _norm_station(typed)
+    if not t:
+        return None
+    if t in names:
+        st.session_state[key] = t
+        return t
+    cands = [n for n in names if t in n] or [n for n in names if all(ch in n for ch in t)]
+    if cands:
+        col.pills("是哪一站？", cands[:10], key=f"{key}_pick", on_change=_pick_station, args=(key,),
+                  label_visibility="collapsed")
+        col.caption("點一下選站" if len(cands) <= 10 else f"有 {len(cands)} 站符合，多打幾個字")
+    else:
+        col.caption(f"找不到「{typed}」，換個寫法試試")
+    return None
+
+
 def rail_tab(kind, defaults):
     if not (cid and secret):
         st.info("請先在上方設定 TDX 金鑰。")
@@ -1802,17 +1849,18 @@ def rail_tab(kind, defaults):
     for k, dv in ((ko, defaults[0]), (kd, defaults[1])):
         if st.session_state.get(k) not in names:
             st.session_state[k] = dv if dv in names else names[0]
-    c1, c2, c3 = st.columns([5, 1, 5], vertical_alignment="bottom")
-    c1.selectbox("起站", names, key=ko)
-    c2.button("⇄", key=f"{kind}_sw", on_click=_swap, args=(ko, kd), help="起訖站對調")
-    c3.selectbox("迄站", names, key=kd)
+    c1, c2, c3 = st.columns([5, 1, 5], vertical_alignment="top")
+    on = station_input(c1, "起站", names, ko)
+    c2.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+    c2.button("⇄", key=f"{kind}_sw", on_click=_swap_station, args=(kind,), help="起訖站對調")
+    dn = station_input(c3, "迄站", names, kd)
     d1, d2 = st.columns(2)
     with d1:
         day = st.date_input("日期", T.tw_now().date(), key=f"{kind}_day")
     with d2:
         after = _after_filter(day, f"{kind}_after")
-    o, d = ids[st.session_state[ko]], ids[st.session_state[kd]]
-    if st.button("🔍 查詢時刻表", type="primary", key=f"{kind}_go"):
+    o, d = (ids[on] if on else None), (ids[dn] if dn else None)
+    if st.button("🔍 查詢時刻表", type="primary", key=f"{kind}_go", disabled=not (o and d)):
         st.session_state[f"{kind}_q"] = (o, d, day.isoformat())
     q = st.session_state.get(f"{kind}_q")
     if not q:
