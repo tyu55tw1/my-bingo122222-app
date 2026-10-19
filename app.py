@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-VERSION = "v8.5.1-標題下移"
+VERSION = "v8.5.2-新增方塊"
 TW = timezone(timedelta(hours=8))
 UA = "streamlit-transit-planner/1.0 (personal project)"
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
@@ -819,7 +819,7 @@ st.markdown("""<style>
 .nx{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:6px 0 14px}
 .nx>div{background:var(--soft);border:1px solid var(--line);border-radius:16px;padding:12px}.nx .tm{font-size:1.3rem}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 8px}.chip{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:4px 9px;font-weight:700;line-height:1.15;text-align:center}.chip small{display:block;font-weight:400;font-size:.72rem;opacity:.8}.chip.past{opacity:.38;font-weight:400}.chip.plan{border:2px solid var(--ac);background:rgba(217,68,26,.12)}
-.stoplist{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:14px;margin:6px 0 10px}.sr{display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid var(--line)}.sr:last-child{border-bottom:0}.sr .n{width:22px;opacity:.55;font-size:.8rem;text-align:right}.sr .nm{flex:1}.sr.hl{background:rgba(217,68,26,.12)}.sr.past{opacity:.45}.eta{font-weight:800;min-width:66px;text-align:right;white-space:nowrap}.eta.now{color:#d9441a}.eta.soon{color:#e8590c}.eta.mute{opacity:.55;font-weight:400;font-size:.82rem}.sr .bus{display:inline-block;margin-left:8px;font-size:.72rem;background:#d9441a;color:#fff;border-radius:8px;padding:1px 7px;font-weight:700}.dot{width:12px;height:12px;border-radius:50%;display:inline-block}.bk{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:0 0 8px}.bkn{display:flex;gap:16px;font-size:.9rem;margin:4px 0}.bkn b{font-size:1.15rem}.bkbar{display:flex;height:7px;border-radius:4px;overflow:hidden;background:rgba(128,128,128,.15)}.bkbar i{display:block;height:100%}.fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:6px 0 10px}.ftile{display:flex;flex-direction:column;gap:3px;border:1px solid var(--line);border-radius:20px;padding:14px 16px;background:var(--soft);text-decoration:none!important;color:inherit!important;min-height:120px}.ftile:hover{border-color:var(--ac)}.ftile .tl{font-weight:800;line-height:1.3}.ftile .tsub{opacity:.65;font-weight:400;font-size:.85rem}.ftile .tv{font-size:1.9rem;font-weight:800;line-height:1.15}.ftile .tv small{font-size:.85rem;font-weight:600;opacity:.7}.ftile .tv.now{color:#d9441a}.ftile .tv.soon{color:#e8590c}.ftile .tv.mute{font-size:1.05rem;opacity:.6}.ftile .trow{display:flex;justify-content:space-between;gap:8px;font-size:.9rem}.ftile .ts{opacity:.7;font-size:.83rem}.ftile b.now{color:#d9441a}.ftile b.ok{color:#2e7d32}.ftile .tmore{margin-top:auto;padding-top:4px;color:var(--ac);font-weight:800;font-size:.85rem}@media(max-width:380px){.fgrid{grid-template-columns:1fr}}.fav{display:flex;justify-content:space-between;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:10px 14px;margin:0 0 4px}.fav .eta{font-size:1.35rem}
+.stoplist{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:14px;margin:6px 0 10px}.sr{display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid var(--line)}.sr:last-child{border-bottom:0}.sr .n{width:22px;opacity:.55;font-size:.8rem;text-align:right}.sr .nm{flex:1}.sr.hl{background:rgba(217,68,26,.12)}.sr.past{opacity:.45}.eta{font-weight:800;min-width:66px;text-align:right;white-space:nowrap}.eta.now{color:#d9441a}.eta.soon{color:#e8590c}.eta.mute{opacity:.55;font-weight:400;font-size:.82rem}.sr .bus{display:inline-block;margin-left:8px;font-size:.72rem;background:#d9441a;color:#fff;border-radius:8px;padding:1px 7px;font-weight:700}.dot{width:12px;height:12px;border-radius:50%;display:inline-block}.bk{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:0 0 8px}.bkn{display:flex;gap:16px;font-size:.9rem;margin:4px 0}.bkn b{font-size:1.15rem}.bkbar{display:flex;height:7px;border-radius:4px;overflow:hidden;background:rgba(128,128,128,.15)}.bkbar i{display:block;height:100%}.fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:6px 0 10px}.ftile{display:flex;flex-direction:column;gap:3px;border:1px solid var(--line);border-radius:20px;padding:14px 16px;background:var(--soft);text-decoration:none!important;color:inherit!important;min-height:120px}.ftile:hover{border-color:var(--ac)}.ftile .tl{font-weight:800;line-height:1.3}.ftile .tsub{opacity:.65;font-weight:400;font-size:.85rem}.ftile .tv{font-size:1.9rem;font-weight:800;line-height:1.15}.ftile .tv small{font-size:.85rem;font-weight:600;opacity:.7}.ftile .tv.now{color:#d9441a}.ftile .tv.soon{color:#e8590c}.ftile .tv.mute{font-size:1.05rem;opacity:.6}.ftile .trow{display:flex;justify-content:space-between;gap:8px;font-size:.9rem}.ftile .ts{opacity:.7;font-size:.83rem}.ftile b.now{color:#d9441a}.ftile b.ok{color:#2e7d32}.ftile .tmore{margin-top:auto;padding-top:4px;color:var(--ac);font-weight:800;font-size:.85rem}.ftile.add{border-style:dashed;background:transparent;min-height:0;padding:12px 14px}.ftile.add .tv{font-size:1.4rem}.ftile.add .ts{font-size:.78rem}@media(max-width:380px){.fgrid:not(.addg){grid-template-columns:1fr}.fgrid.addg{gap:8px}}.fav{display:flex;justify-content:space-between;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:10px 14px;margin:0 0 4px}.fav .eta{font-size:1.35rem}
 @media(max-width:640px){.hero{padding:10px 14px;margin:0 0 8px;border-radius:16px}.hero p{display:none}.hero .ico{font-size:1.6rem}.hero h1{font-size:1.15rem}.tm{font-size:1.45rem}.leg .lt{min-width:78px;font-size:.82rem}}
 </style>""", unsafe_allow_html=True)
 st.markdown("<div class='hero'><span class='ico'>🚉</span><div><h1>智慧交通規劃</h1><p>常用站一打開就看到下一班・公車動態地圖・台鐵誤點・高鐵停靠・捷運・YouBike</p></div></div>", unsafe_allow_html=True)
@@ -1615,11 +1615,18 @@ def fav_page():
         st.caption("讀取常用清單…")
         return
     if not favs:
-        st.info("還沒有常用的站。\n\n- 公車：「🚌 公車」查路線 → 選上車站 → ☆ 加入常用\n"
-                "- YouBike：「🚲 YouBike」找附近站 → ☆ 加入常用\n- 捷運：「🚇 捷運」選車站 → ☆ 加入常用\n"
-                "- 台鐵／高鐵：查完時刻表 → ☆ 加入常用（顯示這段路的下一班）\n\n"
-                "加好之後，打開 app 就會先看到這一頁，直接顯示下一班幾分到。"
-                + ("" if streamlit_js_eval else "\n\n⚠ 沒有安裝 streamlit_js_eval，常用清單關掉網頁就會不見。"))
+        st.markdown("**還沒有常用的站，點下面的方塊去加：**")
+        add = [("🚌", "加公車", "查路線 → 選上車站<br>→ ☆ 加入常用", "bus"),
+               ("🚆", "加台鐵", "查時刻表<br>→ ☆ 加入常用", "tra"),
+               ("🚄", "加高鐵", "查時刻表<br>→ ☆ 加入常用", "hsr"),
+               ("🚇", "加捷運", "選車站<br>→ ☆ 加入常用", "metro"),
+               ("🚲", "加 YouBike", "找附近站<br>→ ☆ 加入常用", "bike")]
+        st.markdown("<div class='fgrid addg'>" + "".join(
+            f"<a class='ftile add' href='?p={pg}' target='_self'><div class='tv'>{ic} ＋</div>"
+            f"<div class='tl'>{t}</div><div class='ts'>{d}</div></a>" for ic, t, d, pg in add) + "</div>",
+            unsafe_allow_html=True)
+        st.caption("加好之後，打開 app 就會先看到這一頁，直接顯示下一班幾分到。"
+                   + ("" if streamlit_js_eval else "　⚠ 沒有安裝 streamlit_js_eval，常用清單關掉網頁就會不見。"))
         return
     c1, c2 = st.columns(2)
     auto = c1.toggle(f"自動更新（每 {LIVE_EVERY} 秒）", value=True, key="fav_auto")
