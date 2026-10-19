@@ -1,4 +1,6 @@
-streamlit>=1.37
+streamlit>=1.40
 requests
 pandas
+pydeck
 streamlit-geolocation
+streamlit_js_eval

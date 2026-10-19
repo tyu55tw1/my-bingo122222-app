@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """🚉 智慧交通規劃 — Streamlit 版。  執行:streamlit run app.py"""
 import html as _html
+import json
 import re
 from datetime import datetime, time as dtime
 
@@ -17,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-VERSION = "v7-選上車站"
+VERSION = "v8-地圖動態"
 TW = timezone(timedelta(hours=8))
 UA = "streamlit-transit-planner/1.0 (personal project)"
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
@@ -818,9 +819,10 @@ st.markdown("""<style>
 .nx{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:6px 0 14px}
 .nx>div{background:var(--soft);border:1px solid var(--line);border-radius:16px;padding:12px}.nx .tm{font-size:1.3rem}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 8px}.chip{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:4px 9px;font-weight:700;line-height:1.15;text-align:center}.chip small{display:block;font-weight:400;font-size:.72rem;opacity:.8}.chip.past{opacity:.38;font-weight:400}.chip.plan{border:2px solid var(--ac);background:rgba(217,68,26,.12)}
-@media(max-width:640px){.hero{padding:14px 16px}.hero h1{font-size:1.25rem}.tm{font-size:1.45rem}.leg .lt{min-width:78px;font-size:.82rem}}
+.stoplist{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:14px;margin:6px 0 10px}.sr{display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid var(--line)}.sr:last-child{border-bottom:0}.sr .n{width:22px;opacity:.55;font-size:.8rem;text-align:right}.sr .nm{flex:1}.sr.hl{background:rgba(217,68,26,.12)}.sr.past{opacity:.45}.eta{font-weight:800;min-width:66px;text-align:right;white-space:nowrap}.eta.now{color:#d9441a}.eta.soon{color:#e8590c}.eta.mute{opacity:.55;font-weight:400;font-size:.82rem}.sr .bus{display:inline-block;margin-left:8px;font-size:.72rem;background:#d9441a;color:#fff;border-radius:8px;padding:1px 7px;font-weight:700}.dot{width:12px;height:12px;border-radius:50%;display:inline-block}.bk{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:0 0 8px}.bkn{display:flex;gap:16px;font-size:.9rem;margin:4px 0}.bkn b{font-size:1.15rem}.bkbar{display:flex;height:7px;border-radius:4px;overflow:hidden;background:rgba(128,128,128,.15)}.bkbar i{display:block;height:100%}.fav{display:flex;justify-content:space-between;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:10px 14px;margin:0 0 4px}.fav .eta{font-size:1.35rem}
+@media(max-width:640px){.hero{padding:10px 14px;margin:0 0 8px;border-radius:16px}.hero p{display:none}.hero .ico{font-size:1.6rem}.hero h1{font-size:1.15rem}.tm{font-size:1.45rem}.leg .lt{min-width:78px;font-size:.82rem}}
 </style>""", unsafe_allow_html=True)
-st.markdown("<div class='hero'><span class='ico'>🚉</span><div><h1>智慧交通規劃</h1><p>輸入起點與終點,自動規劃公車、台鐵、高鐵、捷運轉乘,並列出上車站今天的時刻</p></div></div>", unsafe_allow_html=True)
+st.markdown("<div class='hero'><span class='ico'>🚉</span><div><h1>智慧交通規劃</h1><p>常用站一打開就看到下一班・公車動態地圖・台鐵誤點・高鐵停靠・捷運・YouBike</p></div></div>", unsafe_allow_html=True)
 
 
 @st.cache_data(ttl=3000, show_spinner=False)
@@ -1076,6 +1078,579 @@ def show_plan(res):
 
 
 # ── 金鑰 ──
+# ═══════════════ v8：地圖、公車動態、YouBike、捷運、台鐵誤點、高鐵停靠、★ 常用 ═══════════════
+# TDX 免費金鑰每分鐘只能查 5 次：一天不會變的資料（路線線型、站序、車站位置）快取一整天，
+# 即時資料快取 20～60 秒；自動更新只重跑「即時」那一小塊，每 60 秒一次。
+try:
+    from streamlit_js_eval import streamlit_js_eval      # 把常用清單存在手機瀏覽器裡（localStorage）
+except ImportError:
+    streamlit_js_eval = None
+
+FAV_KEY = "tw_transit_fav_v1"
+LIVE_EVERY = 60
+METRO = {"高雄捷運": "KRTC", "台北捷運": "TRTC", "桃園機場捷運": "TYMC", "高雄輕軌": "KLRT"}
+LINE_COLORS = {("KRTC", "O"): "#F39800", ("KRTC", "R"): "#E2211C", ("KLRT", "C"): "#7CBD52",
+               ("TRTC", "BL"): "#0070BD", ("TRTC", "R"): "#E3002C", ("TRTC", "G"): "#008659",
+               ("TRTC", "O"): "#F8B61C", ("TRTC", "BR"): "#C48C31", ("TRTC", "Y"): "#FFDB00",
+               ("TYMC", "A"): "#8246AF"}
+MAP_COLORS = {"stop": [30, 110, 230], "hl": [217, 68, 26], "bus": [200, 20, 50], "bike": [245, 170, 0],
+              "bike_empty": [150, 150, 150], "me": [20, 160, 90], "station": [120, 60, 200], "train": [200, 20, 50]}
+
+
+def _route_f(route):
+    return T._route_filter(T._route_zh(route))
+
+
+def _pts(wkt):
+    """WKT 的 LINESTRING／MULTILINESTRING → [[經度, 緯度], ...]"""
+    return [[float(a), float(b)] for a, b in re.findall(r"(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)", wkt or "")]
+
+
+def show_map(paths=(), points=(), height=330):
+    """地圖：paths = [{path: [[經度, 緯度]...], color}]，points = [{lat, lon, name, kind, label?}]。
+    kind：stop 站牌、hl 重點站、bus 公車、bike／bike_empty YouBike、me 我的位置、station 車站、train 列車。"""
+    import math
+    import pydeck as pdk
+    lats = [p["lat"] for p in points] + [c[1] for x in paths for c in x["path"]]
+    lons = [p["lon"] for p in points] + [c[0] for x in paths for c in x["path"]]
+    if not lats:
+        return
+    span = max(max(lats) - min(lats), (max(lons) - min(lons)) * 0.92, 0.003)
+    zoom = max(8.0, min(16.5, math.log2(360 / span) - 0.6))
+    lit = pdk.types.String                  # pydeck 會把一般字串當成算式（"pixels" 變成 @@=pixels），文字參數要這樣包起來
+    layers = []
+    if paths:
+        layers.append(pdk.Layer("PathLayer", data=[dict(x, color=x.get("color", [130, 70, 210])) for x in paths],
+                                get_path="path", get_color="color", get_width=4, width_min_pixels=4, width_units=lit("pixels"),
+                                cap_rounded=True, joint_rounded=True))
+    for kind, size in (("stop", 5), ("station", 6), ("bike_empty", 6), ("bike", 7), ("hl", 9), ("me", 8), ("bus", 9),
+                       ("train", 10)):
+        pts = [dict(p, color=MAP_COLORS[kind]) for p in points if p.get("kind") == kind]
+        if pts:
+            layers.append(pdk.Layer("ScatterplotLayer", data=pts, get_position=["lon", "lat"], get_fill_color="color",
+                                    get_line_color=[255, 255, 255], stroked=True, line_width_min_pixels=2,
+                                    get_radius=size, radius_units=lit("pixels"), pickable=True))
+    for below in (False, True):             # 公車、列車的標籤放在點的下方，站名放上方，才不會疊在一起
+        labels = [p for p in points if p.get("label") and (p.get("kind") in ("bus", "train")) == below]
+        if labels:
+            layers.append(pdk.Layer("TextLayer", data=labels, get_position=["lon", "lat"], get_text="label", get_size=13,
+                                    get_color=[180, 10, 40] if below else [25, 25, 25],
+                                    get_pixel_offset=[0, 20] if below else [0, -20], character_set=lit("auto"),
+                                    font_family=lit('"Microsoft JhengHei","Noto Sans TC","PingFang TC",sans-serif'),
+                                    font_weight=700, background=True, get_background_color=[255, 255, 255, 225],
+                                    background_padding=[5, 2, 5, 2]))
+    st.pydeck_chart(pdk.Deck(layers=layers, map_provider="carto", map_style="light", tooltip={"text": "{name}"},
+                             initial_view_state=pdk.ViewState(latitude=(max(lats) + min(lats)) / 2,
+                                                              longitude=(max(lons) + min(lons)) / 2, zoom=zoom)),
+                    height=height)
+
+
+def eta_badge(e):
+    """一筆公車到站資料 → (樣式, 文字)：進站中、幾分、尚未發車…"""
+    if not e:
+        return "mute", "—"
+    mins, txt = T.eta_text(e)
+    if mins is not None:
+        return ("now", "進站中") if mins <= 1 else ("soon" if mins <= 5 else "", f"{mins} 分")
+    return "mute", txt.replace("下一班約", "下班")
+
+
+# ─── 公車：路線線型、即時位置、到站 ───
+@st.cache_data(ttl=86400, show_spinner=False)
+def c_bus_shape(cid, secret, city, route):
+    j = T.tdx_get(token_for(cid, secret), T._bus_path("Shape", city), wait=70, **{"$filter": _route_f(route)})
+    return [{"sub": x.get("SubRouteUID"), "dir": x.get("Direction", 0), "path": _pts(x.get("Geometry"))} for x in j]
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def c_bus_live(cid, secret, city, route):
+    """整條路線的即時資料（查 3 次）：到站時間、公車位置、公車在哪一站（進站／離站）。"""
+    tok, f = token_for(cid, secret), _route_f(route)
+
+    def get(kind):
+        return T.tdx_get(tok, T._bus_path(kind, city), wait=70, **{"$filter": f})
+    return get("EstimatedTimeOfArrival"), get("RealTimeByFrequency"), get("RealTimeNearStop")
+
+
+def _same_sub(x, sub):
+    """這筆即時資料是不是這個方向（有子路線編號就比子路線，沒有就比方向）。"""
+    if x.get("SubRouteUID") and sub.get("SubRouteUID"):
+        return x["SubRouteUID"] == sub["SubRouteUID"]
+    return x.get("Direction", 0) == sub.get("Direction", 0)
+
+
+def bus_live_body(city, route, subs, si):
+    """路線動態：地圖（路線、站牌、公車）＋每一站還有幾分、哪一站有車進站。"""
+    sub = subs[si]
+    seq = sub["Stops"]
+    try:
+        etas, pos, near = c_bus_live(cid, secret, city, route)
+    except Exception as e:  # noqa: BLE001
+        st.warning(str(e))
+        etas, pos, near = [], [], []
+    eta = {}
+    for e in etas:
+        if e.get("Direction", 0) == sub.get("Direction", 0):
+            eta.setdefault(e.get("StopUID"), e)
+    for e in etas:                                 # 子路線完全一樣的優先
+        if _same_sub(e, sub) and e.get("SubRouteUID"):
+            eta[e.get("StopUID")] = e
+    at = {n.get("StopUID"): (n.get("PlateNumb", ""), n.get("A2EventType")) for n in near if _same_sub(n, sub)}
+    buses = [b for b in pos if _same_sub(b, sub) and (b.get("BusPosition") or {}).get("PositionLat")]
+    hl = st.session_state.get(f"bus_stop_{city}_{route}_{si}")
+    try:
+        shapes = c_bus_shape(cid, secret, city, route)
+    except Exception:  # noqa: BLE001
+        shapes = []
+    shape = next((s for s in shapes if s["sub"] == sub.get("SubRouteUID")), None) or \
+        next((s for s in shapes if s["dir"] == sub.get("Direction", 0)), None)
+    points = []
+    for i, s in enumerate(seq):
+        p = s.get("StopPosition") or {}
+        if p.get("PositionLat"):
+            _, txt = eta_badge(eta.get(s.get("StopUID")))
+            name = f"{i + 1}. {T._zh(s.get('StopName'))}　{txt}"
+            points.append({"lat": p["PositionLat"], "lon": p["PositionLon"], "name": name,
+                           "kind": "hl" if i == hl else "stop", "label": T._zh(s.get("StopName")) if i == hl else ""})
+    for b in buses:
+        p = b["BusPosition"]
+        points.append({"lat": p["PositionLat"], "lon": p["PositionLon"], "kind": "bus", "name": f"🚌 {b.get('PlateNumb', '')}",
+                       "label": b.get("PlateNumb", "")})
+    show_map([{"path": shape["path"]}] if shape and shape["path"] else [], points, height=360)
+    rows = []
+    for i, s in enumerate(seq):
+        cls, txt = eta_badge(eta.get(s.get("StopUID")))
+        bus = at.get(s.get("StopUID"))
+        tag = (f"<span class='bus'>🚌 {esc(bus[0])} {'進站中' if bus[1] == 1 else '剛離站'}</span>" if bus else "")
+        rows.append(f"<div class='sr{' hl' if i == hl else ''}'><span class='n'>{i + 1}</span>"
+                    f"<span class='nm'>{esc(T._zh(s.get('StopName')))}{tag}</span><span class='eta {cls}'>{esc(txt)}</span></div>")
+    st.markdown("<div class='stoplist'>" + "".join(rows) + "</div>", unsafe_allow_html=True)
+    st.caption(f"{T.tw_now():%H:%M:%S} 更新・路上有 {len(buses)} 台車"
+               + ("" if etas else "・目前沒有即時資料（可能還沒發車、末班已過或今天未營運）"))
+
+
+def bus_live(city, route, subs, si):
+    auto = st.toggle(f"自動更新（每 {LIVE_EVERY} 秒）", key=f"live_auto_{city}_{route}",
+                     help="只更新這一塊，不會整頁重跑。TDX 免費金鑰每分鐘只能查 5 次，所以不能更新得更頻繁")
+    st.fragment(run_every=LIVE_EVERY if auto else None)(bus_live_body)(city, route, subs, si)
+
+
+# ─── YouBike ───
+def _bike_name(s):
+    return re.sub(r"^YouBike\d(?:\.\d)?_", "", T._zh(s.get("StationName")))
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def c_bike_stations(cid, secret, lat, lon, radius):
+    j = T.tdx_get(token_for(cid, secret), "/advanced/v2/Bike/Station/NearBy", wait=70,
+                  **{"$spatialFilter": f"nearby({lat}, {lon}, {int(radius)})"})
+    out = []
+    for s in j:
+        p = s.get("StationPosition") or {}
+        if p.get("PositionLat"):
+            out.append({"uid": s["StationUID"], "name": _bike_name(s), "lat": p["PositionLat"], "lon": p["PositionLon"],
+                        "auth": s.get("AuthorityID", ""), "addr": T._zh(s.get("StationAddress"))})
+    return out
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def c_bike_avail_near(cid, secret, lat, lon, radius):
+    j = T.tdx_get(token_for(cid, secret), "/advanced/v2/Bike/Availability/NearBy", wait=70,
+                  **{"$spatialFilter": f"nearby({lat}, {lon}, {int(radius)})"})
+    return {a["StationUID"]: a for a in j}
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def c_bike_avail_city(cid, secret, city, uids):
+    f = " or ".join(f"StationUID eq '{u}'" for u in uids)
+    j = T.tdx_get(token_for(cid, secret), f"/v2/Bike/Availability/City/{city}", wait=70, **{"$filter": f})
+    return {a["StationUID"]: a for a in j}
+
+
+def _bike_merge(s, a):
+    d = (a or {}).get("AvailableRentBikesDetail") or {}
+    rent = (a or {}).get("AvailableRentBikes")
+    return dict(s, gen=d.get("GeneralBikes", rent), ebike=d.get("ElectricBikes", 0), ret=(a or {}).get("AvailableReturnBikes"),
+                ok=(a or {}).get("ServiceStatus", 1) == 1, known=bool(a))
+
+
+def bikes_near(lat, lon, radius):
+    """附近 YouBike：[{uid, name, lat, lon, gen 一般車, ebike 電輔車, ret 可還, dist}]，由近到遠。查 2 次。"""
+    av = c_bike_avail_near(cid, secret, lat, lon, radius)
+    out = []
+    for s in c_bike_stations(cid, secret, lat, lon, radius):
+        b = _bike_merge(s, av.get(s["uid"]))
+        b["dist"] = round(T.meters((lat, lon), (s["lat"], s["lon"])))
+        out.append(b)
+    return sorted(out, key=lambda x: x["dist"])
+
+
+def bike_html(b, extra=""):
+    if not b.get("known"):
+        body = "<div class='sub'>沒有即時車位資料</div>"
+    elif not b.get("ok"):
+        body = "<div class='sub'>暫停營運</div>"
+    else:
+        g, e, r = b.get("gen") or 0, b.get("ebike") or 0, b.get("ret") or 0
+        tot = max(g + e + r, 1)
+        body = (f"<div class='bkn'><span>可借一般 <b>{g}</b></span><span>可借電輔 <b>{e}</b></span><span>可還 <b>{r}</b></span></div>"
+                f"<div class='bkbar'><i style='width:{g / tot * 100:.0f}%;background:#c08a2b'></i>"
+                f"<i style='width:{e / tot * 100:.0f}%;background:#ee6c2b'></i>"
+                f"<i style='width:{r / tot * 100:.0f}%;background:rgba(128,128,128,.25)'></i></div>")
+    dist = f"<span class='sub'>　{b['dist']} 公尺</span>" if b.get("dist") is not None else ""
+    return f"<div class='bk'><div><b>🚲 {esc(b['name'])}</b>{dist}{extra}</div>{body}</div>"
+
+
+def bike_points(bikes):
+    return [{"lat": b["lat"], "lon": b["lon"], "kind": "bike" if (b.get("gen") or 0) + (b.get("ebike") or 0) else "bike_empty",
+             "name": f"🚲 {b['name']}　一般 {b.get('gen') or 0}・電輔 {b.get('ebike') or 0}・可還 {b.get('ret') or 0}"}
+            for b in bikes]
+
+
+# ─── 捷運 ───
+@st.cache_data(ttl=86400, show_spinner=False)
+def c_metro_stations(cid, secret, op):
+    """捷運車站：[(站名, [車站代碼...], 緯度, 經度)]；轉乘站（同名不同線）合成一個。"""
+    by = {}
+    for s in T.tdx_get(token_for(cid, secret), f"/v2/Rail/Metro/Station/{op}", wait=70):
+        n = T._zh(s.get("StationName"))
+        p = s.get("StationPosition") or {}
+        e = by.setdefault(n, [n, [], p.get("PositionLat"), p.get("PositionLon")])
+        e[1].append(s["StationID"])
+    return sorted(by.values(), key=lambda x: x[1][0])
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def c_metro_board(cid, secret, op):
+    return T.tdx_get(token_for(cid, secret), f"/v2/Rail/Metro/LiveBoard/{op}", wait=70)
+
+
+def metro_rows(op, board, ids):
+    rows = []
+    for x in board:
+        if x.get("StationID") not in ids:
+            continue
+        dest = T._zh(x.get("DestinationStationName")) or T._zh(x.get("TripHeadSign"))
+        dest = dest if dest.startswith(("往", "逆", "順")) else f"往{dest}"
+        t, ss = x.get("EstimateTime"), x.get("ServiceStatus", 0)
+        txt = ("進站中" if t == 0 else f"{t} 分") if ss == 0 and t is not None else "—"
+        line = x.get("LineID") or x.get("LineNO") or ""
+        rows.append((line, T._zh(x.get("LineName")), dest, t if ss == 0 and t is not None else 999, txt))
+    return sorted(rows, key=lambda r: (r[0], r[2]))
+
+
+def metro_html(op, rows):
+    if not rows:
+        return "<div class='sub'>目前沒有即時資料（可能還沒營運或末班已過）</div>"
+    out = []
+    for line, lname, dest, t, txt in rows:
+        c = LINE_COLORS.get((op, line), "#888")
+        out.append(f"<div class='sr'><span class='dot' style='background:{c}'></span><span class='nm'>{esc(dest)}"
+                   f"<span class='sub'>　{esc(lname)}</span></span><span class='eta {'now' if t == 0 else ''}'>{esc(txt)}</span></div>")
+    return "<div class='stoplist' style='max-height:none'>" + "".join(out) + "</div>"
+
+
+# ─── 台鐵：車站看板（誤點）、單一車次 ───
+@st.cache_data(ttl=30, show_spinner=False)
+def c_tra_board(cid, secret, station_id):
+    j = T.tdx_get(token_for(cid, secret), f"/v3/Rail/TRA/StationLiveBoard/Station/{station_id}", wait=70)
+    return {x.get("TrainNo"): x.get("DelayTime", 0) for x in j.get("StationLiveBoards") or []}
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def c_tra_train(cid, secret, no):
+    j = T.tdx_get(token_for(cid, secret), f"/v3/Rail/TRA/DailyTrainTimetable/Today/TrainNo/{no}", wait=70)
+    t = (j.get("TrainTimetables") or [{}])[0]
+    return [(s.get("StationID"), T._zh(s.get("StationName")), (s.get("ArrivalTime") or "")[:5],
+             (s.get("DepartureTime") or "")[:5]) for s in t.get("StopTimes") or []]
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def c_tra_live(cid, secret, no):
+    j = T.tdx_get(token_for(cid, secret), "/v3/Rail/TRA/TrainLiveBoard", wait=70, **{"$filter": f"TrainNo eq '{no}'"})
+    x = (j.get("TrainLiveBoards") or [None])[0]
+    return None if not x else {"站": x.get("StationID"), "狀態": x.get("TrainStationStatus"), "誤點": x.get("DelayTime", 0)}
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def c_rail_pos(cid, secret, kind):
+    """車站位置 {代碼: (緯度, 經度)}，畫地圖用。"""
+    if kind == "tra":
+        j = T.tdx_get(token_for(cid, secret), "/v3/Rail/TRA/Station", wait=70, **{"$select": "StationID,StationPosition"})
+        j = j.get("Stations") or []
+    else:
+        j = T.tdx_get(token_for(cid, secret), "/v2/Rail/THSR/Station", wait=70, **{"$select": "StationID,StationPosition"})
+    return {s["StationID"]: ((s.get("StationPosition") or {}).get("PositionLat"), (s.get("StationPosition") or {}).get("PositionLon"))
+            for s in j}
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def c_thsr_day(cid, secret, day_iso):
+    """高鐵當天每一班車的停靠站：{車次: [(代碼, 站名, 到, 開)...]}。查 1 次。"""
+    out = {}
+    for x in T.tdx_get(token_for(cid, secret), f"/v2/Rail/THSR/DailyTimetable/TrainDate/{day_iso}", wait=70):
+        no = (x.get("DailyTrainInfo") or {}).get("TrainNo")
+        out[no] = [(s.get("StationID"), T._zh(s.get("StationName")), (s.get("ArrivalTime") or "")[:5],
+                    (s.get("DepartureTime") or "")[:5]) for s in x.get("StopTimes") or []]
+    return out
+
+
+def delay_text(d):
+    return "" if d is None else ("準點" if not d else f"晚 {d} 分")
+
+
+def train_view(kind, no, day_iso):
+    """一班車的沿途停靠站、現在到哪一站（台鐵用即時位置；高鐵依時刻推算）＋地圖。"""
+    today = day_iso == T.tw_now().date().isoformat()
+    try:
+        stops = c_tra_train(cid, secret, no) if kind == "tra" else c_thsr_day(cid, secret, day_iso).get(no, [])
+        pos = c_rail_pos(cid, secret, kind)
+    except Exception as e:  # noqa: BLE001
+        st.error(str(e))
+        return
+    if not stops:
+        st.caption("查不到這班車的停靠站。")
+        return
+    cur, note = None, ""
+    if kind == "tra" and today:
+        try:
+            live = c_tra_live(cid, secret, no)
+        except Exception:  # noqa: BLE001
+            live = None
+        if live:
+            cur = next((i for i, s in enumerate(stops) if s[0] == live["站"]), None)
+            status = {0: "進站中", 1: "在站上", 2: "已離站"}.get(live["狀態"], "")
+            note = f"🚆 現在：{stops[cur][1] if cur is not None else live['站']} {status}・{delay_text(live['誤點'])}"
+        else:
+            note = "目前沒有這班車的即時位置（可能還沒發車或已經到站）"
+    elif today:                       # 高鐵沒有即時位置：依時刻推算
+        now = f"{T.tw_now():%H:%M}"
+        passed = [i for i, s in enumerate(stops) if (s[3] or s[2]) and (s[3] or s[2]) <= now]
+        if passed and passed[-1] < len(stops) - 1:
+            cur = passed[-1]
+            note = f"🚄 依時刻推算：已過 {stops[cur][1]}，下一站 {stops[cur + 1][1]}"
+        elif passed:
+            note = "這班車已經到終點了"
+        else:
+            note = f"還沒發車（{stops[0][3] or stops[0][2]} 從{stops[0][1]}出發）"
+    if note:
+        st.markdown(f"**{esc(note)}**")
+    rows, path, points = [], [], []
+    for i, (sid, name, arr, dep) in enumerate(stops):
+        cls = " hl" if i == cur else (" past" if cur is not None and i < cur else "")
+        t = f"到 {arr}　開 {dep}" if arr and dep and arr != dep else (dep or arr)
+        rows.append(f"<div class='sr{cls}'><span class='n'>{i + 1}</span><span class='nm'>{esc(name)}</span>"
+                    f"<span class='eta' style='font-weight:600'>{esc(t)}</span></div>")
+        ll = pos.get(sid)
+        if ll and ll[0]:
+            path.append([ll[1], ll[0]])
+            points.append({"lat": ll[0], "lon": ll[1], "name": f"{name} {t}", "kind": "train" if i == cur else "station",
+                           "label": name if i in (0, len(stops) - 1, cur) else ""})
+    show_map([{"path": path}] if len(path) > 1 else [], points, height=300)
+    st.markdown("<div class='stoplist'>" + "".join(rows) + "</div>", unsafe_allow_html=True)
+
+
+# ─── ★ 常用：存在手機瀏覽器（localStorage），換手機或清除瀏覽資料才會不見 ───
+def fav_sync():
+    """每次執行一開始呼叫：第一次從瀏覽器讀常用清單；有改過就寫回去。"""
+    if streamlit_js_eval is None:
+        st.session_state.setdefault("fav", [])
+        return
+    pend = st.session_state.pop("fav_pending", None)
+    if pend is not None:
+        n = st.session_state["fav_n"] = st.session_state.get("fav_n", 0) + 1
+        streamlit_js_eval(js_expressions=f"localStorage.setItem('{FAV_KEY}', {json.dumps(json.dumps(pend, ensure_ascii=False))})",
+                          key=f"fav_set_{n}")
+    if "fav" not in st.session_state:
+        v = streamlit_js_eval(js_expressions=f"localStorage.getItem('{FAV_KEY}') || '[]'", key="fav_load")
+        if v is not None:
+            try:
+                st.session_state["fav"] = [x for x in json.loads(v) if isinstance(x, dict)]
+            except ValueError:
+                st.session_state["fav"] = []
+
+
+def fav_list():
+    return st.session_state.get("fav")
+
+
+def fav_id(x):
+    return "|".join(str(x.get(k, "")) for k in ("t", "city", "route", "sub", "stop", "uid", "op", "name"))
+
+
+def fav_add(item):
+    favs = list(fav_list() or [])
+    if fav_id(item) not in {fav_id(x) for x in favs}:
+        favs.append(item)
+        st.session_state["fav"] = favs
+        st.session_state["fav_pending"] = favs
+        st.toast(f"已加入常用：{item.get('label', '')}", icon="⭐")
+
+
+def fav_remove(fid):
+    favs = [x for x in fav_list() or [] if fav_id(x) != fid]
+    st.session_state["fav"] = favs
+    st.session_state["fav_pending"] = favs
+
+
+def fav_button(item, key):
+    have = fav_id(item) in {fav_id(x) for x in fav_list() or []}
+    st.button("★ 已在常用" if have else "☆ 加入常用", key=key, disabled=have, on_click=fav_add, args=(item,))
+
+
+def fav_body():
+    favs = fav_list() or []
+    now = T.tw_now()
+    # 公車：同一個縣市的站一次查完
+    buses = [x for x in favs if x.get("t") == "bus"]
+    by_city = {}
+    for x in buses:
+        by_city.setdefault(x["city"], set()).add(x["stop"])
+    etas = {}
+    for city, uids in by_city.items():
+        try:
+            for e in c_stops_eta(cid, secret, city, tuple(sorted(uids))):
+                etas.setdefault((e.get("StopUID"), T._zh(e.get("RouteName"))), []).append(e)
+        except Exception as ex:  # noqa: BLE001
+            st.warning(str(ex))
+    bikes = [x for x in favs if x.get("t") == "bike"]
+    bike_av = {}
+    by_auth = {}
+    for x in bikes:
+        by_auth.setdefault(T._ISO_CITY.get(x.get("auth", "")), []).append(x["uid"])
+    for city, uids in by_auth.items():
+        if city:
+            try:
+                bike_av.update(c_bike_avail_city(cid, secret, city, tuple(sorted(uids))))
+            except Exception as ex:  # noqa: BLE001
+                st.warning(str(ex))
+    for x in favs:
+        c1, c2 = st.columns([12, 1], vertical_alignment="center")
+        with c1:
+            if x.get("t") == "bus":
+                cands = etas.get((x["stop"], T._route_zh(x["route"]).replace("臺", "台")), []) or \
+                    etas.get((x["stop"], x["route"]), [])
+                e = next((c for c in cands if c.get("SubRouteUID") == x.get("sub")), None) or \
+                    next((c for c in cands if c.get("Direction", 0) == x.get("dir", 0)), None)
+                cls, txt = eta_badge(e)
+                st.markdown(f"<div class='fav'><div><b>🚌 {esc(x['route'])}</b> <span class='sub'>往 {esc(x.get('to', ''))}</span>"
+                            f"<div class='sub'>{esc(x['name'])}</div></div><div class='eta {cls}'>{esc(txt)}</div></div>",
+                            unsafe_allow_html=True)
+            elif x.get("t") == "bike":
+                st.markdown(bike_html(_bike_merge(x, bike_av.get(x["uid"]))), unsafe_allow_html=True)
+            elif x.get("t") == "metro":
+                try:
+                    rows = metro_rows(x["op"], c_metro_board(cid, secret, x["op"]), x["ids"])
+                except Exception as ex:  # noqa: BLE001
+                    rows = []
+                    st.warning(str(ex))
+                st.markdown(f"<div style='margin-top:4px'><b>🚇 {esc(x['name'])}</b> <span class='sub'>{esc(x.get('opname', ''))}</span></div>"
+                            + metro_html(x["op"], rows), unsafe_allow_html=True)
+        if c2.button("✕", key=f"fav_rm_{fav_id(x)}", help="從常用移除"):
+            fav_remove(fav_id(x))
+            st.rerun()
+    st.caption(f"{now:%H:%M:%S} 更新")
+
+
+def fav_page():
+    favs = fav_list()
+    if favs is None:
+        st.caption("讀取常用清單…")
+        return
+    if not favs:
+        st.info("還沒有常用的站。\n\n- 公車：「🚌 公車」查路線 → 選上車站 → ☆ 加入常用\n"
+                "- YouBike：「🚲 YouBike」找附近站 → ☆ 加入常用\n- 捷運：「🚇 捷運」選車站 → ☆ 加入常用\n\n"
+                "加好之後，打開 app 就會先看到這一頁，直接顯示下一班幾分到。"
+                + ("" if streamlit_js_eval else "\n\n⚠ 沒有安裝 streamlit_js_eval，常用清單關掉網頁就會不見。"))
+        return
+    auto = st.toggle(f"自動更新（每 {LIVE_EVERY} 秒）", value=True, key="fav_auto")
+    st.fragment(run_every=LIVE_EVERY if auto else None)(fav_body)()
+    st.caption("常用清單存在這支手機的瀏覽器裡（換手機或清除瀏覽資料才會不見）。")
+
+
+# ─── 地點輸入（YouBike 頁用；附近公車有自己的） ───
+def place_input(key):
+    if st.toggle("📍 用目前位置(GPS)", key=f"{key}_gps"):
+        return my_location("所在位置")
+    q = st.text_input("我現在在哪", placeholder="例如:台南火車站、成功大學、23.0,120.2", key=f"{key}_q")
+    cands = geo(q) if q.strip() else []
+    if cands:
+        return cands[st.selectbox("地點候選", range(len(cands)), format_func=lambda i: cands[i]["name"], key=f"{key}_pick")
+                     if len(cands) > 1 else 0]
+    if q.strip():
+        st.warning("找不到這個地點,請換個說法(例如加上縣市)或直接輸入「緯度,經度」。")
+    return None
+
+
+def bike_page():
+    st.markdown("#### 🚲 附近 YouBike")
+    here = place_input("bike")
+    c1, c2 = st.columns([2, 1], vertical_alignment="bottom")
+    radius = c1.select_slider("找多遠的站", [300, 500, 800, 1200], value=500, key="bike_r",
+                              format_func=lambda m: f"{m} 公尺")
+    if c2.button("🔎 查 YouBike", type="primary", key="bike_go", disabled=not here):
+        st.session_state["bike_query"] = (here["name"], round(here["lat"], 5), round(here["lon"], 5), radius)
+    q = st.session_state.get("bike_query")
+    if not q:
+        st.caption("輸入位置（或開 GPS）後按「查 YouBike」：會列出附近站點可借幾台一般車、電輔車，還有幾個空位可以還。")
+        return
+    name, lat, lon, rad = q
+    try:
+        with st.spinner("查詢附近 YouBike…"):
+            bikes = bikes_near(lat, lon, rad)
+    except Exception as e:  # noqa: BLE001
+        st.error(str(e))
+        return
+    st.markdown(f"**{esc(name)}** 附近 {rad} 公尺・{len(bikes)} 個站・{T.tw_now():%H:%M} 查詢")
+    if not bikes:
+        st.warning("附近沒有 YouBike 站，可以把範圍調大一點。")
+        return
+    show_map([], [{"lat": lat, "lon": lon, "kind": "me", "name": f"📍 {name}"}] + bike_points(bikes), height=320)
+    for k, b in enumerate(bikes[:15]):
+        c1, c2 = st.columns([5, 2], vertical_alignment="center")
+        c1.markdown(bike_html(b), unsafe_allow_html=True)
+        with c2:
+            fav_button({"t": "bike", "uid": b["uid"], "name": b["name"], "lat": b["lat"], "lon": b["lon"],
+                        "auth": b["auth"], "label": f"🚲 {b['name']}"}, key=f"bike_fav_{b['uid']}")
+    st.caption("車位每分鐘更新。資料來源：交通部 TDX。")
+
+
+def metro_page():
+    st.markdown("#### 🚇 捷運即時到站")
+    names = list(METRO)
+    opname = st.segmented_control("系統", names, default=st.session_state.get("metro_op_last", names[0]), key="metro_op") or names[0]
+    st.session_state["metro_op_last"] = opname
+    op = METRO[opname]
+    try:
+        with st.spinner("載入車站…"):
+            stations = c_metro_stations(cid, secret, op)
+    except Exception as e:  # noqa: BLE001
+        st.error(str(e))
+        return
+    labels = [f"{s[0]}（{'/'.join(s[1])}）" for s in stations]
+    k = st.selectbox("車站（可以直接打字搜尋）", range(len(stations)), index=None, format_func=lambda i: labels[i],
+                     placeholder="例如:美麗島、台北車站", key=f"metro_st_{op}")
+    if k is None:
+        st.caption("選車站後會顯示各方向下一班還有幾分到。台中捷運目前 TDX 沒有即時資料。")
+        return
+    sname, ids, lat, lon = stations[k]
+    fav_button({"t": "metro", "op": op, "opname": opname, "ids": ids, "name": sname, "label": f"🚇 {sname}"},
+               key=f"metro_fav_{op}_{sname}")
+    auto = st.toggle("自動更新（每 30 秒）", value=True, key="metro_auto")
+
+    def body():
+        try:
+            rows = metro_rows(op, c_metro_board(cid, secret, op), ids)
+        except Exception as e:  # noqa: BLE001
+            st.error(str(e))
+            return
+        st.markdown(metro_html(op, rows), unsafe_allow_html=True)
+        st.caption(f"{T.tw_now():%H:%M:%S} 更新")
+    st.fragment(run_every=30 if auto else None)(body)()
+    if lat:
+        show_map([], [{"lat": lat, "lon": lon, "kind": "station", "name": sname, "label": sname}], height=240)
+
+
 def _secret(k):
     try:  # 沒有 secrets 檔時,部分 Streamlit 版本會丟例外
         return str(st.secrets.get(k, "") or "")
@@ -1094,9 +1669,17 @@ else:
         secret = st.text_input("Client Secret", value=st.session_state.get("secret", ""), type="password")
         st.session_state["cid"], st.session_state["secret"] = cid, secret
 
-tab_plan, tab_tra, tab_hsr, tab_bus = st.tabs(["🧭 路線規劃", "🚆 台鐵時刻", "🚄 高鐵時刻", "🚌 公車時刻"])
+# 分頁：只跑目前看的那一頁（st.tabs 會每一頁都跑，即時資料會白白用掉 TDX 額度）。網址記住目前頁面，加到主畫面就直接開那一頁
+fav_sync()
+PAGES = {"★ 常用": "fav", "🚌 公車": "bus", "🧭 路線規劃": "plan", "🚆 台鐵": "tra", "🚄 高鐵": "hsr",
+         "🚇 捷運": "metro", "🚲 YouBike": "bike"}
+_codes = {v: k for k, v in PAGES.items()}
+_p0 = _codes.get(st.query_params.get("p", ""), "★ 常用")
+page = st.segmented_control("功能", list(PAGES), default=_p0, key="page", label_visibility="collapsed") or _p0
+if st.query_params.get("p") != PAGES[page]:
+    st.query_params["p"] = PAGES[page]
 
-with tab_plan:
+if page == "🧭 路線規劃":
     # ── 起終點 ──
     use_gps = st.toggle("📍 使用目前位置當起點(GPS)")
     origin = None
@@ -1251,26 +1834,60 @@ def rail_tab(kind, defaults):
         return
     same = q == (o, d, day.isoformat())
     later = [r for r in rows if r["出發"] >= after] if same else rows
+    today = q[2] == T.tw_now().date().isoformat()
+    delays, stops_of = {}, {}
+    if kind == "tra" and today:          # 台鐵起站的即時看板：快到站的車有沒有誤點
+        try:
+            delays = c_tra_board(cid, secret, q[0])
+        except Exception:  # noqa: BLE001
+            delays = {}
+    if kind == "thsr":                   # 高鐵當天每班車的停靠站
+        try:
+            stops_of = c_thsr_day(cid, secret, q[2])
+        except Exception:  # noqa: BLE001
+            stops_of = {}
     if not same:   # 改了起訖站或日期但還沒重新查:不要拿舊結果當「下一班」
         st.info("起訖站或日期改了,按「查詢時刻表」更新結果。下面是上次查詢的結果。")
     elif later:
         n = later[0]
         kind_txt = f"{n.get('車種', '')} " if n.get("車種") else ""
-        st.markdown(f"<div class='rt best'><span class='tag'>下一班</span><div class='tm'>{n['出發']} ➜ {n['抵達']}</div>"
+        dl = delay_text(delays[n["車次"]]) if n["車次"] in delays else ""
+        dl_html = f"<span class='tag' style='background:{'#2e7d32' if dl == '準點' else '#c62828'}'>{dl}</span>" if dl else ""
+        st.markdown(f"<div class='rt best'><span class='tag'>下一班</span>{dl_html}<div class='tm'>{n['出發']} ➜ {n['抵達']}</div>"
                     f"<div class='sub'>{esc(kind_txt)}{esc(n['車次'])} 次・{T.fmt_min(n['行車'])}・往 {esc(n['往'])}</div></div>",
                     unsafe_allow_html=True)
     else:
         st.info(f"{after} 以後沒有班次了。")
     df = pd.DataFrame(later or rows)
     df["行車"] = df["行車"].map(T.fmt_min)
+    if delays:
+        df.insert(1, "誤點", [delay_text(delays[x]) if x in delays else "" for x in df["車次"]])
+    if stops_of:
+        def mid(no):
+            ids = [x[0] for x in stops_of.get(no, [])]
+            if q[0] in ids and q[1] in ids:
+                i, j = ids.index(q[0]), ids.index(q[1])
+                names_ = [x[1] for x in stops_of[no][min(i, j) + 1:max(i, j)]]
+                return "、".join(names_) if names_ else "直達"
+            return ""
+        df["停靠"] = [mid(x) for x in df["車次"]]
     st.dataframe(df, hide_index=True, use_container_width=True, height=min(38 * (len(df) + 1), 520))
+    if delays:
+        st.caption("「誤點」是起站的即時看板，只有快到站的車才有資料。")
+    trains = list(df["車次"])
+    pick = st.selectbox("🔎 看某一班車的停靠站和現在到哪", trains, index=None, placeholder="選車次", key=f"{kind}_train")
+    if pick:
+        if kind == "tra" and not today:
+            st.caption("台鐵的車次停靠站只能查今天的。")
+        else:
+            train_view(kind, pick, q[2])
     st.caption("資料來源:交通部 TDX。實際以台鐵/高鐵公告為準(誤點、停駛請看各公司即時資訊)。")
 
 
-with tab_tra:
+if page == "🚆 台鐵":
     rail_tab("tra", ("台南", "台北"))
 
-with tab_hsr:
+if page == "🚄 高鐵":
     rail_tab("thsr", ("台南", "台北"))
 
 def _leave_text(mins, walk):
@@ -1301,6 +1918,7 @@ def near_section():
             st.warning("找不到這個地點,請換個說法(例如加上縣市)或直接輸入「緯度,經度」。")
     c1, c2, c3 = st.columns([2, 1, 1], vertical_alignment="bottom")
     radius = c1.select_slider("找多遠的站牌", [200, 300, 500, 800], value=300, key="near_r", format_func=lambda m: f"{m} 公尺")
+    st.toggle("地圖上也顯示 YouBike", value=True, key="near_bike")
     if c2.button("🔎 查附近公車", type="primary", key="near_go", disabled=not here):
         st.session_state["near"] = (here["name"], round(here["lat"], 5), round(here["lon"], 5), radius)
     c3.button("🔄 更新即時到站", key="near_refresh", disabled="near" not in st.session_state,
@@ -1323,9 +1941,21 @@ def near_section():
         return
     groups = T.nearby_board(stops, routes, etas)
     st.markdown(f"**{esc(name)}** 附近 {rad} 公尺・{T.tw_now():%H:%M} 查詢")
+    bikes = []
+    if st.session_state.get("near_bike", True):
+        try:
+            with st.spinner("查詢附近 YouBike…"):
+                bikes = bikes_near(lat, lon, max(rad, 300))[:8]
+        except Exception as e:  # noqa: BLE001
+            st.caption(f"YouBike 查不到:{e}")
+    seen, pts = set(), [{"lat": lat, "lon": lon, "kind": "me", "name": f"📍 {name}"}]
+    for s_ in stops:
+        if s_["位置"] not in seen:
+            seen.add(s_["位置"])
+            pts.append({"lat": s_["位置"][0], "lon": s_["位置"][1], "kind": "stop", "name": f"🚏 {s_['站名']}（{s_['距離']} 公尺）"})
+    show_map([], pts + bike_points(bikes), height=300)
     if not groups:
         st.warning(f"{rad} 公尺內沒有公車站牌,可以把範圍調大一點。")
-        return
     if not etas:
         st.caption("目前這些站牌都沒有即時到站資料(可能還沒發車、末班已過或今天未營運)。點「今天時刻」可以看全天的時刻表。")
     for gi, g in enumerate(groups):
@@ -1364,21 +1994,26 @@ def near_section():
                                                    for x, y, lo, hi in info["班距"]]), hide_index=True, use_container_width=True)
                     else:
                         st.caption("今天沒有這個方向的時刻表資料。")
+    if bikes:
+        st.markdown("##### 🚲 附近 YouBike")
+        st.markdown("".join(bike_html(b) for b in bikes[:4]), unsafe_allow_html=True)
+        st.caption("更多 YouBike 站、加入常用:到「🚲 YouBike」頁。")
     st.caption(f"「幾點前出門」= 公車到站時間 − 走到站牌的時間 − 緩衝 {BUFFER_MIN} 分。走路以每分鐘 {T.WALK_M_PER_MIN} 公尺估算。")
 
 
 def stop_section(city, route):
-    """🚏 選方向 + 上車站 → 這站的即時到站、下一班幾點、今天全部到站時間。"""
+    """🚏 選方向 + 上車站 → 這站的即時到站、下一班幾點、今天全部到站時間。
+    回傳 (sched, subs, 方向索引)，下面的「路線動態」接著用；即時到站跟路線動態共用同一份資料（不多查）。"""
     try:
         with st.spinner("載入站牌清單…"):
             sched, subs = c_bus_raw(cid, secret, city, route)
     except Exception as e:  # noqa: BLE001
         st.error(str(e))
-        return
+        return None, None, None
     subs = [r for r in subs if r.get("Stops")]
     if not subs:
         st.caption("TDX 沒有這條路線的站牌資料。")
-        return
+        return None, None, None
     names = [_zh_name(r) for r in subs]
     c1, c2 = st.columns(2)
     si = c1.selectbox("方向", range(len(subs)), format_func=lambda i: names[i], key=f"bus_dir_{city}_{route}")
@@ -1387,20 +2022,18 @@ def stop_section(city, route):
     ki = c2.selectbox("上車站(可以直接打字搜尋)", range(len(seq)), index=None, placeholder="選你要上車的站",
                       format_func=lambda i: f"{i + 1}. {T._zh(seq[i].get('StopName'))}", key=f"bus_stop_{city}_{route}_{si}")
     if ki is None:
-        st.caption("選好上車站,就會顯示這站下一班車幾點到。")
-        return
+        st.caption("選好上車站,就會顯示這站下一班車幾點到,也可以加入常用。")
+        return sched, subs, si
     stop = seq[ki]
     stop_name, uid, direction = T._zh(stop.get("StopName")), stop.get("StopUID"), sub.get("Direction", 0)
     now = T.tw_now()
     now_hm = f"{now:%H:%M}"
-    # 即時到站(1 次查詢,30 秒內共用)
     mins, live = None, None
     try:
-        with st.spinner("查詢這站的即時到站…"):
-            etas = c_stops_eta(cid, secret, city, (uid,)) if uid else []
-        e = next((x for x in etas if sub.get("SubRouteUID") and x.get("SubRouteUID") == sub.get("SubRouteUID")), None) or \
-            next((x for x in etas if T._zh(x.get("RouteName")) == T._zh(sub.get("RouteName"))
-                  and x.get("Direction", 0) == direction), None)
+        with st.spinner("查詢即時到站…"):
+            etas = c_bus_live(cid, secret, city, route)[0]
+        e = next((x for x in etas if x.get("StopUID") == uid and _same_sub(x, sub) and x.get("SubRouteUID")), None) or \
+            next((x for x in etas if x.get("StopUID") == uid and x.get("Direction", 0) == direction), None)
         if e:
             mins, live = T.eta_text(e)
     except Exception as ex:  # noqa: BLE001
@@ -1434,14 +2067,19 @@ def stop_section(city, route):
         if approx:
             st.caption(("用現在的即時到站推算全天時刻。" if board else
                         "這條路線只有起點站發車時間,這站的時間是用站序粗估的,可能差 10 分鐘以上。") + "以即時到站為準。")
-        st.button("🔄 更新即時到站", key=f"bus_stop_refresh_{city}_{route}", help="即時到站 30 秒內重複按會用同一份資料")
+        to = re.sub(r"[((].*$", "", names[si].split("→")[-1]).strip() if "→" in names[si] else \
+            T._zh((seq[-1] or {}).get("StopName"))
+        fav_button({"t": "bus", "city": city, "route": route, "sub": sub.get("SubRouteUID"), "dir": direction,
+                    "stop": uid, "name": stop_name, "to": to, "label": f"🚌 {route} {stop_name}"},
+                   key=f"bus_fav_{city}_{route}_{si}_{ki}")
+    return sched, subs, si
 
 
 def _zh_name(r):
     return T._zh(r.get("SubRouteName")) or T._zh(r.get("RouteName"))
 
 
-with tab_bus:
+if page == "🚌 公車":
     if not (cid and secret):
         st.info("請先在上方設定 TDX 金鑰。")
     else:
@@ -1459,46 +2097,45 @@ with tab_bus:
             st.error(str(e))
         route = st.selectbox("路線(可以直接打字搜尋)", routes, index=None, placeholder="例如:21、綠幹線、1610", key=f"bus_route_{city}")
         if route:
-            stop_section(city, route)
+            sched, subs, si = stop_section(city, route)
+            if subs:
+                st.markdown("##### 🗺️ 路線動態")
+                bus_live(city, route, subs, si)
             day = T.tw_now().date()
-            try:
-                with st.spinner("查詢時刻表…"):
-                    subs = c_bus_schedule(cid, secret, city, route, day.isoformat())
-            except Exception as e:  # noqa: BLE001
-                st.error(str(e))
-                subs = []
-            now_hm = f"{T.tw_now():%H:%M}"
-            if not subs:
-                st.warning("這條路線沒有提供時刻表,可以按下方「即時到站」查看公車現在的位置。")
-            for s in subs:
-                st.markdown(f"##### {esc(s['名稱'])}")
-                if s["發車"]:
-                    nxt = [t for t in s["發車"] if t >= now_hm]
-                    st.markdown(("今天接下來的發車(起點站):**" + "、".join(nxt[:6]) + "**") if nxt else "今天的班次都已經發車了。")
-                    with st.expander(f"今天全部發車時刻({len(s['發車'])} 班)"):
-                        st.write("、".join(s["發車"]))
-                elif s["班距"]:
-                    st.dataframe(pd.DataFrame([{"時段": f"{a}–{b}", "班距": f"每 {lo}–{hi} 分" if lo != hi else f"每 {lo} 分"}
-                                               for a, b, lo, hi in s["班距"]]), hide_index=True, use_container_width=True)
-                else:
-                    st.caption("今天沒有這個方向的班次資料。")
-            if st.button("🚏 即時到站", key="bus_eta_go"):
-                st.session_state["bus_eta_q"] = (city, route)
-            if st.session_state.get("bus_eta_q") == (city, route):
+            with st.expander("🕘 起點站發車時刻表"):
                 try:
-                    with st.spinner("查詢即時到站…"):
-                        eta, has = c_bus_eta(cid, secret, city, route)
+                    subs_t = c_bus_schedule(cid, secret, city, route, day.isoformat())
                 except Exception as e:  # noqa: BLE001
                     st.error(str(e))
-                else:
-                    if not has:
-                        st.info("目前沒有即時到站資料(可能還沒發車或今天未營運)。")
-                    for (direction, name), stops in eta.items():
-                        with st.expander(f"{name}({len(stops)} 站)", expanded=len(eta) <= 2):
-                            st.dataframe(pd.DataFrame(stops, columns=["站名", "到站"]), hide_index=True, use_container_width=True,
-                                         height=min(36 * (len(stops) + 1), 480))
-                    st.caption("即時到站 30 秒內重複查詢會用同一份資料。")
+                    subs_t = []
+                now_hm = f"{T.tw_now():%H:%M}"
+                if not subs_t:
+                    st.caption("這條路線沒有提供時刻表,請看上面的路線動態。")
+                for s_ in subs_t:
+                    st.markdown(f"**{esc(s_['名稱'])}**")
+                    if s_["發車"]:
+                        nxt = [t for t in s_["發車"] if t >= now_hm]
+                        st.markdown(("今天接下來的發車:**" + "、".join(nxt[:6]) + "**") if nxt else "今天的班次都已經發車了。")
+                        st.caption("全部:" + "、".join(s_["發車"]))
+                    elif s_["班距"]:
+                        st.dataframe(pd.DataFrame([{"時段": f"{a_}–{b_}", "班距": f"每 {lo}–{hi} 分" if lo != hi else f"每 {lo} 分"}
+                                                   for a_, b_, lo, hi in s_["班距"]]), hide_index=True, use_container_width=True)
+                    else:
+                        st.caption("今天沒有這個方向的班次資料。")
         st.caption("資料來源:交通部 TDX。公車時刻以各客運公司公告為準。")
+
+if page == "★ 常用":
+    if cid and secret:
+        fav_page()
+    else:
+        st.info("請先在上方設定 TDX 金鑰。")
+if page in ("🚇 捷運", "🚲 YouBike"):
+    if not (cid and secret):
+        st.info("請先在上方設定 TDX 金鑰。")
+    elif page == "🚇 捷運":
+        metro_page()
+    else:
+        bike_page()
 
 st.caption(f"程式版本:{getattr(T, 'VERSION', '未知')}")
 st.caption("路線資料來源:交通部 TDX 運輸資料流通服務平台。班次為規劃參考,實際以各運輸業者公告與現場為準。")
