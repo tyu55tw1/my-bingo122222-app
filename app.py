@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-VERSION = "v8.4-縣市圖示"
+VERSION = "v8.5-常用方塊"
 TW = timezone(timedelta(hours=8))
 UA = "streamlit-transit-planner/1.0 (personal project)"
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
@@ -819,7 +819,7 @@ st.markdown("""<style>
 .nx{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin:6px 0 14px}
 .nx>div{background:var(--soft);border:1px solid var(--line);border-radius:16px;padding:12px}.nx .tm{font-size:1.3rem}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 8px}.chip{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:4px 9px;font-weight:700;line-height:1.15;text-align:center}.chip small{display:block;font-weight:400;font-size:.72rem;opacity:.8}.chip.past{opacity:.38;font-weight:400}.chip.plan{border:2px solid var(--ac);background:rgba(217,68,26,.12)}
-.stoplist{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:14px;margin:6px 0 10px}.sr{display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid var(--line)}.sr:last-child{border-bottom:0}.sr .n{width:22px;opacity:.55;font-size:.8rem;text-align:right}.sr .nm{flex:1}.sr.hl{background:rgba(217,68,26,.12)}.sr.past{opacity:.45}.eta{font-weight:800;min-width:66px;text-align:right;white-space:nowrap}.eta.now{color:#d9441a}.eta.soon{color:#e8590c}.eta.mute{opacity:.55;font-weight:400;font-size:.82rem}.sr .bus{display:inline-block;margin-left:8px;font-size:.72rem;background:#d9441a;color:#fff;border-radius:8px;padding:1px 7px;font-weight:700}.dot{width:12px;height:12px;border-radius:50%;display:inline-block}.bk{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:0 0 8px}.bkn{display:flex;gap:16px;font-size:.9rem;margin:4px 0}.bkn b{font-size:1.15rem}.bkbar{display:flex;height:7px;border-radius:4px;overflow:hidden;background:rgba(128,128,128,.15)}.bkbar i{display:block;height:100%}.fav{display:flex;justify-content:space-between;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:10px 14px;margin:0 0 4px}.fav .eta{font-size:1.35rem}
+.stoplist{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:14px;margin:6px 0 10px}.sr{display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid var(--line)}.sr:last-child{border-bottom:0}.sr .n{width:22px;opacity:.55;font-size:.8rem;text-align:right}.sr .nm{flex:1}.sr.hl{background:rgba(217,68,26,.12)}.sr.past{opacity:.45}.eta{font-weight:800;min-width:66px;text-align:right;white-space:nowrap}.eta.now{color:#d9441a}.eta.soon{color:#e8590c}.eta.mute{opacity:.55;font-weight:400;font-size:.82rem}.sr .bus{display:inline-block;margin-left:8px;font-size:.72rem;background:#d9441a;color:#fff;border-radius:8px;padding:1px 7px;font-weight:700}.dot{width:12px;height:12px;border-radius:50%;display:inline-block}.bk{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin:0 0 8px}.bkn{display:flex;gap:16px;font-size:.9rem;margin:4px 0}.bkn b{font-size:1.15rem}.bkbar{display:flex;height:7px;border-radius:4px;overflow:hidden;background:rgba(128,128,128,.15)}.bkbar i{display:block;height:100%}.fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:6px 0 10px}.ftile{display:flex;flex-direction:column;gap:3px;border:1px solid var(--line);border-radius:20px;padding:14px 16px;background:var(--soft);text-decoration:none!important;color:inherit!important;min-height:120px}.ftile:hover{border-color:var(--ac)}.ftile .tl{font-weight:800;line-height:1.3}.ftile .tsub{opacity:.65;font-weight:400;font-size:.85rem}.ftile .tv{font-size:1.9rem;font-weight:800;line-height:1.15}.ftile .tv small{font-size:.85rem;font-weight:600;opacity:.7}.ftile .tv.now{color:#d9441a}.ftile .tv.soon{color:#e8590c}.ftile .tv.mute{font-size:1.05rem;opacity:.6}.ftile .trow{display:flex;justify-content:space-between;gap:8px;font-size:.9rem}.ftile .ts{opacity:.7;font-size:.83rem}.ftile b.now{color:#d9441a}.ftile b.ok{color:#2e7d32}.ftile .tmore{margin-top:auto;padding-top:4px;color:var(--ac);font-weight:800;font-size:.85rem}@media(max-width:380px){.fgrid{grid-template-columns:1fr}}.fav{display:flex;justify-content:space-between;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:10px 14px;margin:0 0 4px}.fav .eta{font-size:1.35rem}
 @media(max-width:640px){.hero{padding:10px 14px;margin:0 0 8px;border-radius:16px}.hero p{display:none}.hero .ico{font-size:1.6rem}.hero h1{font-size:1.15rem}.tm{font-size:1.45rem}.leg .lt{min-width:78px;font-size:.82rem}}
 </style>""", unsafe_allow_html=True)
 st.markdown("<div class='hero'><span class='ico'>🚉</span><div><h1>智慧交通規劃</h1><p>常用站一打開就看到下一班・公車動態地圖・台鐵誤點・高鐵停靠・捷運・YouBike</p></div></div>", unsafe_allow_html=True)
@@ -1476,7 +1476,7 @@ def fav_list():
 
 
 def fav_id(x):
-    return "|".join(str(x.get(k, "")) for k in ("t", "city", "route", "sub", "stop", "uid", "op", "name"))
+    return "|".join(str(x.get(k, "")) for k in ("t", "city", "route", "sub", "stop", "uid", "op", "name", "kind", "o", "d"))
 
 
 def fav_add(item):
@@ -1499,58 +1499,114 @@ def fav_button(item, key):
     st.button("★ 已在常用" if have else "☆ 加入常用", key=key, disabled=have, on_click=fav_add, args=(item,))
 
 
-def fav_body():
-    favs = fav_list() or []
+def _ftile(title, value="", sub="", rows=(), link=None, more="", cls="", extra=""):
+    """常用頁的方塊卡片（跟生活助手首頁同一種樣子）；有 link 就整張可以點。"""
+    r = "".join(f"<div class='trow'><span>{x}</span><span>{y}</span></div>" for x, y in rows)
+    v = f"<div class='tv {cls}'>{value}</div>" if value else ""
+    m = f"<div class='tmore'>{more} →</div>" if link and more else ""
+    inner = f"<div class='tl'>{title}</div>{v}{r}{extra}<div class='ts'>{sub}</div>{m}"
+    return f"<a class='ftile' href='{link}' target='_self'>{inner}</a>" if link else f"<div class='ftile'>{inner}</div>"
+
+
+def _qs(**kw):
+    from urllib.parse import urlencode
+    return "?" + urlencode({k: v for k, v in kw.items() if v not in (None, "")})
+
+
+def fav_tiles(favs):
+    """每個常用項目 → 一張卡片的 HTML。公車同一個縣市一次查完、YouBike 同一個縣市一次查完（省 TDX 額度）。"""
     now = T.tw_now()
-    # 公車：同一個縣市的站一次查完
-    buses = [x for x in favs if x.get("t") == "bus"]
-    by_city = {}
-    for x in buses:
-        by_city.setdefault(x["city"], set()).add(x["stop"])
-    etas = {}
+    now_hm = f"{now:%H:%M}"
+    by_city, by_auth = {}, {}
+    for x in favs:
+        if x.get("t") == "bus":
+            by_city.setdefault(x["city"], set()).add(x["stop"])
+        elif x.get("t") == "bike":
+            by_auth.setdefault(T._ISO_CITY.get(x.get("auth", "")), []).append(x["uid"])
+    etas, bike_av, errs = {}, {}, []
     for city, uids in by_city.items():
         try:
             for e in c_stops_eta(cid, secret, city, tuple(sorted(uids))):
                 etas.setdefault((e.get("StopUID"), T._zh(e.get("RouteName"))), []).append(e)
         except Exception as ex:  # noqa: BLE001
-            st.warning(str(ex))
-    bikes = [x for x in favs if x.get("t") == "bike"]
-    bike_av = {}
-    by_auth = {}
-    for x in bikes:
-        by_auth.setdefault(T._ISO_CITY.get(x.get("auth", "")), []).append(x["uid"])
+            errs.append(str(ex))
     for city, uids in by_auth.items():
         if city:
             try:
                 bike_av.update(c_bike_avail_city(cid, secret, city, tuple(sorted(uids))))
             except Exception as ex:  # noqa: BLE001
-                st.warning(str(ex))
+                errs.append(str(ex))
+    tiles = []
     for x in favs:
-        c1, c2 = st.columns([12, 1], vertical_alignment="center")
-        with c1:
-            if x.get("t") == "bus":
-                cands = etas.get((x["stop"], T._route_zh(x["route"]).replace("臺", "台")), []) or \
-                    etas.get((x["stop"], x["route"]), [])
-                e = next((c for c in cands if c.get("SubRouteUID") == x.get("sub")), None) or \
-                    next((c for c in cands if c.get("Direction", 0) == x.get("dir", 0)), None)
-                cls, txt = eta_badge(e)
-                st.markdown(f"<div class='fav'><div><b>🚌 {esc(x['route'])}</b> <span class='sub'>往 {esc(x.get('to', ''))}</span>"
-                            f"<div class='sub'>{esc(x['name'])}</div></div><div class='eta {cls}'>{esc(txt)}</div></div>",
-                            unsafe_allow_html=True)
-            elif x.get("t") == "bike":
-                st.markdown(bike_html(_bike_merge(x, bike_av.get(x["uid"]))), unsafe_allow_html=True)
-            elif x.get("t") == "metro":
+        t = x.get("t")
+        if t == "bus":
+            cands = etas.get((x["stop"], x["route"]), [])
+            e = next((c for c in cands if c.get("SubRouteUID") == x.get("sub")), None) or \
+                next((c for c in cands if c.get("Direction", 0) == x.get("dir", 0)), None)
+            cls, txt = eta_badge(e)
+            tiles.append(_ftile(f"🚌 {esc(x['route'])} <span class='tsub'>往 {esc(x.get('to', ''))}</span>", esc(txt),
+                                f"🚏 {esc(x['name'])}",
+                                link=_qs(p="bus", city=x["city"], route=x["route"], sub=x.get("sub"), stop=x["stop"]),
+                                more="路線動態", cls=cls))
+        elif t == "bike":
+            b = _bike_merge(x, bike_av.get(x["uid"]))
+            if b.get("known") and b.get("ok"):
+                g, e_, r_ = b.get("gen") or 0, b.get("ebike") or 0, b.get("ret") or 0
+                tot = max(g + e_ + r_, 1)
+                bar = (f"<div class='bkbar'><i style='width:{g / tot * 100:.0f}%;background:#c08a2b'></i>"
+                       f"<i style='width:{e_ / tot * 100:.0f}%;background:#ee6c2b'></i>"
+                       f"<i style='width:{r_ / tot * 100:.0f}%;background:rgba(128,128,128,.25)'></i></div>")
+                tiles.append(_ftile(f"🚲 {esc(b['name'])}", f"{g + e_} <small>台可借</small>", "",
+                                    [("一般車", g), ("電輔車", e_), ("可還", r_)], extra=bar,
+                                    cls="" if g + e_ else "mute"))
+            else:
+                tiles.append(_ftile(f"🚲 {esc(b['name'])}", "—", "暫停營運" if b.get("known") else "沒有即時資料", cls="mute"))
+        elif t == "metro":
+            try:
+                rows = metro_rows(x["op"], c_metro_board(cid, secret, x["op"]), x["ids"])
+            except Exception as ex:  # noqa: BLE001
+                rows = []
+                errs.append(str(ex))
+            rr = [(f"<span class='dot' style='background:{LINE_COLORS.get((x['op'], ln), '#888')}'></span> {esc(dest)}",
+                   f"<b class='{'now' if tt == 0 else ''}'>{esc(txt)}</b>") for ln, _, dest, tt, txt in rows[:5]]
+            tiles.append(_ftile(f"🚇 {esc(x['name'])} <span class='tsub'>{esc(x.get('opname', ''))}</span>", "",
+                                "" if rr else "目前沒有即時資料", rr,
+                                link=_qs(p="metro", op=x["op"], st=x["name"]), more="捷運"))
+        elif t == "rail":
+            kind = x["kind"]
+            try:
+                rows = [r for r in c_rail(kind, cid, secret, x["o"], x["d"], now.date().isoformat()) if r["出發"] >= now_hm]
+            except Exception as ex:  # noqa: BLE001
+                rows = []
+                errs.append(str(ex))
+            icon = "🚆" if kind == "tra" else "🚄"
+            title = f"{icon} {esc(x['on'])} → {esc(x['dn'])}"
+            link = _qs(p="tra" if kind == "tra" else "hsr", o=x["on"], d=x["dn"])
+            if not rows:
+                tiles.append(_ftile(title, "今天沒有了", "明天再查", link=link, more="時刻表", cls="mute"))
+                continue
+            n = rows[0]
+            dl = ""
+            if kind == "tra":
                 try:
-                    rows = metro_rows(x["op"], c_metro_board(cid, secret, x["op"]), x["ids"])
-                except Exception as ex:  # noqa: BLE001
-                    rows = []
-                    st.warning(str(ex))
-                st.markdown(f"<div style='margin-top:4px'><b>🚇 {esc(x['name'])}</b> <span class='sub'>{esc(x.get('opname', ''))}</span></div>"
-                            + metro_html(x["op"], rows), unsafe_allow_html=True)
-        if c2.button("✕", key=f"fav_rm_{fav_id(x)}", help="從常用移除"):
-            fav_remove(fav_id(x))
-            st.rerun()
-    st.caption(f"{now:%H:%M:%S} 更新")
+                    d = c_tra_board(cid, secret, x["o"]).get(n["車次"])
+                    dl = "" if d is None else (" <b class='ok'>準點</b>" if not d else f" <b class='now'>晚 {d} 分</b>")
+                except Exception:  # noqa: BLE001
+                    dl = ""
+            ttag = f"<span class='tag' style='{_train_css(n.get('車種', ''))}'>{esc(n['車種'])}</span>" if n.get("車種") else ""
+            more_rows = [(f"{r['出發']} → {r['抵達']}", f"{esc(r.get('車種', ''))} {esc(r['車次'])}") for r in rows[1:3]]
+            tiles.append(_ftile(title, n["出發"], f"{ttag}{esc(n['車次'])} 次・{n['抵達']} 到{dl}", more_rows,
+                                link=link, more="時刻表"))
+    return tiles, errs
+
+
+def fav_body():
+    favs = fav_list() or []
+    tiles, errs = fav_tiles(favs)
+    st.markdown("<div class='fgrid'>" + "".join(tiles) + "</div>", unsafe_allow_html=True)
+    for e in dict.fromkeys(errs):
+        st.caption(f"⚠️ {e}")
+    st.caption(f"{T.tw_now():%H:%M:%S} 更新・點卡片可以看詳細")
 
 
 def fav_page():
@@ -1560,11 +1616,22 @@ def fav_page():
         return
     if not favs:
         st.info("還沒有常用的站。\n\n- 公車：「🚌 公車」查路線 → 選上車站 → ☆ 加入常用\n"
-                "- YouBike：「🚲 YouBike」找附近站 → ☆ 加入常用\n- 捷運：「🚇 捷運」選車站 → ☆ 加入常用\n\n"
+                "- YouBike：「🚲 YouBike」找附近站 → ☆ 加入常用\n- 捷運：「🚇 捷運」選車站 → ☆ 加入常用\n"
+                "- 台鐵／高鐵：查完時刻表 → ☆ 加入常用（顯示這段路的下一班）\n\n"
                 "加好之後，打開 app 就會先看到這一頁，直接顯示下一班幾分到。"
                 + ("" if streamlit_js_eval else "\n\n⚠ 沒有安裝 streamlit_js_eval，常用清單關掉網頁就會不見。"))
         return
-    auto = st.toggle(f"自動更新（每 {LIVE_EVERY} 秒）", value=True, key="fav_auto")
+    c1, c2 = st.columns(2)
+    auto = c1.toggle(f"自動更新（每 {LIVE_EVERY} 秒）", value=True, key="fav_auto")
+    edit = c2.toggle("✏️ 編輯常用", key="fav_edit")
+    if edit:
+        for x in favs:
+            a, b_ = st.columns([8, 1], vertical_alignment="center")
+            a.markdown(esc(x.get("label") or x.get("name") or ""))
+            if b_.button("✕", key=f"fav_rm_{fav_id(x)}", help="從常用移除"):
+                fav_remove(fav_id(x))
+                st.rerun()
+        st.divider()
     st.fragment(run_every=LIVE_EVERY if auto else None)(fav_body)()
     st.caption("常用清單存在這支手機的瀏覽器裡（換手機或清除瀏覽資料才會不見）。")
 
@@ -1629,6 +1696,11 @@ def metro_page():
         st.error(str(e))
         return
     labels = [f"{s[0]}（{'/'.join(s[1])}）" for s in stations]
+    pre = st.session_state.pop("_pre_metro", None)
+    if pre and pre[0] == op:
+        i = next((i for i, s_ in enumerate(stations) if s_[0] == pre[1]), None)
+        if i is not None:
+            st.session_state[f"metro_st_{op}"] = i
     k = st.selectbox("車站（可以直接打字搜尋）", range(len(stations)), index=None, format_func=lambda i: labels[i],
                      placeholder="例如:美麗島、台北車站", key=f"metro_st_{op}")
     if k is None:
@@ -1679,6 +1751,32 @@ _p0 = _codes.get(st.query_params.get("p", ""), "★ 常用")
 page = st.segmented_control("功能", list(PAGES), default=_p0, key="page", label_visibility="collapsed") or _p0
 if st.query_params.get("p") != PAGES[page]:
     st.query_params["p"] = PAGES[page]
+
+
+def apply_link_params():
+    """從常用卡片點進來時，網址會帶路線／車站：先放進對應元件的狀態，畫面就直接選好。"""
+    qp, ss = st.query_params, st.session_state
+    if qp.get("city") and qp.get("route"):
+        code = qp["city"]
+        ss["bus_city_name"] = {v: k for k, v in T.BUS_CITIES.items()}.get(code, ss.get("bus_city_name", "臺南市"))
+        ss["_pre_route"] = (code, qp["route"])
+        ss["_pre_sub"], ss["_pre_stop"] = qp.get("sub"), qp.get("stop")
+    if qp.get("op") and qp.get("st"):
+        ss["metro_op_last"] = {v: k for k, v in METRO.items()}.get(qp["op"], ss.get("metro_op_last"))
+        ss.pop("metro_op", None)
+        ss["_pre_metro"] = (qp["op"], qp["st"])
+    if qp.get("o") and qp.get("d"):
+        kind = "thsr" if qp.get("p") == "hsr" else "tra"
+        for k, v in ((f"{kind}_o", qp["o"]), (f"{kind}_d", qp["d"])):
+            ss[k] = ss[f"{k}_txt"] = v
+            ss[f"{k}_v"] = ss.get(f"{k}_v", 0) + 1     # 輸入框換新的 key，才會顯示帶進來的站名
+        ss[f"_pre_{kind}_go"] = True
+    for k in ("city", "route", "sub", "stop", "op", "st", "o", "d"):
+        if k in qp:
+            del qp[k]
+
+
+apply_link_params()
 
 if page == "🧭 路線規劃":
     # ── 起終點 ──
@@ -1891,7 +1989,8 @@ def rail_tab(kind, defaults):
     with d2:
         after = _after_filter(day, f"{kind}_after")
     o, d = (ids[on] if on else None), (ids[dn] if dn else None)
-    if st.button("🔍 查詢時刻表", type="primary", key=f"{kind}_go", disabled=not (o and d)):
+    if st.button("🔍 查詢時刻表", type="primary", key=f"{kind}_go", disabled=not (o and d)) or \
+            (st.session_state.pop(f"_pre_{kind}_go", False) and o and d):
         st.session_state[f"{kind}_q"] = (o, d, day.isoformat())
     q = st.session_state.get(f"{kind}_q")
     if not q:
@@ -1908,6 +2007,9 @@ def rail_tab(kind, defaults):
         return
     names_by_id = {i: n for i, n in stations}
     st.markdown(f"**{names_by_id.get(q[0], q[0])} ➜ {names_by_id.get(q[1], q[1])}**　{q[2]}　共 {len(rows)} 班")
+    on_, dn_ = names_by_id.get(q[0], q[0]), names_by_id.get(q[1], q[1])
+    fav_button({"t": "rail", "kind": kind, "o": q[0], "d": q[1], "on": on_, "dn": dn_, "name": f"{on_}→{dn_}",
+                "label": f"{'🚆' if kind == 'tra' else '🚄'} {on_} → {dn_}"}, key=f"{kind}_fav_{q[0]}_{q[1]}")
     if not rows:
         st.warning("這天這兩站之間沒有直達車次(台鐵可能需要轉車,可改用「路線規劃」分頁)。")
         return
@@ -2104,6 +2206,14 @@ def stop_section(city, route):
         st.caption("TDX 沒有這條路線的站牌資料。")
         return None, None, None
     names = [_zh_name(r) for r in subs]
+    pre_sub, pre_stop = st.session_state.pop("_pre_sub", None), st.session_state.pop("_pre_stop", None)
+    if pre_sub:      # 從常用卡片點進來：方向和上車站直接選好
+        i = next((i for i, r in enumerate(subs) if r.get("SubRouteUID") == pre_sub), None)
+        if i is not None:
+            st.session_state[f"bus_dir_{city}_{route}"] = i
+            k = next((k for k, x in enumerate(subs[i]["Stops"]) if x.get("StopUID") == pre_stop), None)
+            if k is not None:
+                st.session_state[f"bus_stop_{city}_{route}_{i}"] = k
     c1, c2 = st.columns(2)
     si = c1.selectbox("方向", range(len(subs)), format_func=lambda i: names[i], key=f"bus_dir_{city}_{route}")
     sub = subs[si]
@@ -2227,6 +2337,9 @@ if page == "🚌 公車":
                 routes = c_bus_routes(cid, secret, city)
         except Exception as e:  # noqa: BLE001
             st.error(str(e))
+        pre = st.session_state.pop("_pre_route", None)
+        if pre and pre[0] == city and pre[1] in routes:   # 從常用卡片點進來：路線直接選好
+            st.session_state[f"bus_route_{city}"] = pre[1]
         route = st.selectbox("路線(可以直接打字搜尋)", routes, index=None, placeholder="例如:21、綠幹線、1610", key=f"bus_route_{city}")
         if route:
             sched, subs, si = stop_section(city, route)
