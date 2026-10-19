@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-VERSION = "v8.5-常用方塊"
+VERSION = "v8.5.1-標題下移"
 TW = timezone(timedelta(hours=8))
 UA = "streamlit-transit-planner/1.0 (personal project)"
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
@@ -809,7 +809,7 @@ def my_location(what):
 esc = lambda x: _html.escape(str(x), quote=True)
 st.markdown("""<style>
 :root{--soft:rgba(128,128,128,.11);--line:rgba(128,128,128,.28);--ac:#d9441a}
-.block-container{padding:1.2rem 1rem 3rem;max-width:880px}header[data-testid=stHeader]{background:transparent}footer{visibility:hidden}
+.block-container{padding:3.4rem 1rem 3rem;max-width:880px}header[data-testid=stHeader]{background:transparent}footer{visibility:hidden}
 .hero{display:flex;align-items:center;gap:14px;background:linear-gradient(120deg,#1f6feb,#35c2d6 60%,#7ee0a6);padding:18px 22px;border-radius:22px;margin:4px 0 16px;color:#fff;box-shadow:0 10px 28px rgba(31,111,235,.28)}
 .hero h1{margin:0;font-size:1.6rem;color:#fff;padding:0}.hero p{margin:2px 0 0;opacity:.95;color:#fff}.hero .ico{font-size:2.5rem}
 .rt{background:var(--soft);border:1px solid var(--line);border-radius:18px;padding:14px 16px;margin:0 0 12px}.rt.best{border:2px solid var(--ac)}
