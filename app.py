@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-VERSION = "v8.2-邊打邊選站"
+VERSION = "v8.4-縣市圖示"
 TW = timezone(timedelta(hours=8))
 UA = "streamlit-transit-planner/1.0 (personal project)"
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
@@ -479,14 +479,14 @@ def tra_timetable(token, o, d, day, wait=20):
             continue
         note = []
         if info.get("SuspendedFlag") or a.get("SuspendedFlag") or b.get("SuspendedFlag"):
-            note.append("⚠️ 停駛")
-        if info.get("BikeFlag"):
-            note.append("可帶單車")
-        if info.get("DiningFlag"):
-            note.append("有餐車")
+            note.append("⛔ 停駛")
+        if info.get("ExtraTrainFlag"):
+            note.append("加班車")
+        icons = "".join(i for f, i in (("BikeFlag", "🚲"), ("WheelChairFlag", "♿"), ("BreastFeedFlag", "🍼"),
+                                       ("DiningFlag", "🍱")) if info.get(f))
         rows.append({"車次": info.get("TrainNo", ""), "車種": _zh(info.get("TrainTypeName")).split("(")[0],
                      "出發": dep, "抵達": arr, "行車": _ride_min(dep, arr), "往": _zh(info.get("EndingStationName")),
-                     "備註": "、".join(note)})
+                     "服務": icons, "備註": "、".join(note)})
     return sorted(rows, key=lambda r: r["出發"])
 
 
@@ -1303,7 +1303,8 @@ def bike_html(b, extra=""):
 
 def bike_points(bikes):
     return [{"lat": b["lat"], "lon": b["lon"], "kind": "bike" if (b.get("gen") or 0) + (b.get("ebike") or 0) else "bike_empty",
-             "name": f"🚲 {b['name']}　一般 {b.get('gen') or 0}・電輔 {b.get('ebike') or 0}・可還 {b.get('ret') or 0}"}
+             "name": f"🚲 {b['name']}　一般 {b.get('gen') or 0}・電輔 {b.get('ebike') or 0}・可還 {b.get('ret') or 0}",
+             "label": str((b.get("gen") or 0) + (b.get("ebike") or 0)) if b.get("known") else ""}
             for b in bikes]
 
 
@@ -1787,6 +1788,15 @@ def _after_filter(day, key):
 
 
 _RAIL_ALIAS = {"北車": "台北", "南車": "台南", "高車": "高雄", "中車": "台中"}
+# 車種顏色（底色, 字色）：跟台鐵 app 一樣，一眼分得出快車慢車
+TRAIN_COLORS = {"普悠瑪": ("#FDE2E2", "#B91C1C"), "太魯閣": ("#FDE2E2", "#B91C1C"), "自強": ("#FFE4CC", "#B45309"),
+                "莒光": ("#FFF4BF", "#8A5A00"), "區間快": ("#D7F0FF", "#0369A1"), "區間": ("#E3E8FF", "#3730A3"),
+                "復興": ("#E8F5E9", "#2E7D32"), "普快": ("#EEEEEE", "#424242")}
+
+
+def _train_css(name):
+    c = next((v for k, v in TRAIN_COLORS.items() if str(name).startswith(k)), None)
+    return f"background:{c[0]};color:{c[1]};font-weight:700" if c else ""
 
 
 def _norm_station(t):
@@ -1922,9 +1932,11 @@ def rail_tab(kind, defaults):
         kind_txt = f"{n.get('車種', '')} " if n.get("車種") else ""
         dl = delay_text(delays[n["車次"]]) if n["車次"] in delays else ""
         dl_html = f"<span class='tag' style='background:{'#2e7d32' if dl == '準點' else '#c62828'}'>{dl}</span>" if dl else ""
-        st.markdown(f"<div class='rt best'><span class='tag'>下一班</span>{dl_html}<div class='tm'>{n['出發']} ➜ {n['抵達']}</div>"
-                    f"<div class='sub'>{esc(kind_txt)}{esc(n['車次'])} 次・{T.fmt_min(n['行車'])}・往 {esc(n['往'])}</div></div>",
-                    unsafe_allow_html=True)
+        ttag = f"<span class='tag' style='{_train_css(n.get('車種', ''))}'>{esc(n['車種'])}</span>" if n.get("車種") else ""
+        st.markdown(f"<div class='rt best'><span class='tag'>下一班</span>{ttag}{dl_html}"
+                    f"<div class='tm'>{n['出發']} ➜ {n['抵達']}</div>"
+                    f"<div class='sub'>{esc(n['車次'])} 次・{T.fmt_min(n['行車'])}・往 {esc(n['往'])}"
+                    f"{'　' + n['服務'] if n.get('服務') else ''}</div></div>", unsafe_allow_html=True)
     else:
         st.info(f"{after} 以後沒有班次了。")
     df = pd.DataFrame(later or rows)
@@ -1940,7 +1952,15 @@ def rail_tab(kind, defaults):
                 return "、".join(names_) if names_ else "直達"
             return ""
         df["停靠"] = [mid(x) for x in df["車次"]]
-    st.dataframe(df, hide_index=True, use_container_width=True, height=min(38 * (len(df) + 1), 520))
+    sty = df.style
+    if "車種" in df:
+        sty = sty.map(lambda v: _train_css(v), subset=["車種"])
+    if "誤點" in df:
+        sty = sty.map(lambda v: "color:#2e7d32;font-weight:700" if v == "準點" else
+                      ("color:#c62828;font-weight:700" if str(v).startswith("晚") else ""), subset=["誤點"])
+    st.dataframe(sty, hide_index=True, use_container_width=True, height=min(38 * (len(df) + 1), 520))
+    if kind == "tra":
+        st.caption("🚲 可帶自行車　♿ 無障礙座位　🍼 哺乳室　🍱 餐車／便當")
     if delays:
         st.caption("「誤點」是起站的即時看板，只有快到站的車才有資料。")
     trains = list(df["車次"])
@@ -2144,6 +2164,50 @@ def stop_section(city, route):
     return sched, subs, si
 
 
+# 縣市公車按鈕（跟台鐵 app 一樣用顏色分縣市）：常用的直接點，其他縣市收在「其他地區」
+CITY_BTNS = [("臺北市", "#E53935"), ("新北市", "#D81B60"), ("桃園市", "#B71C1C"), ("臺中市", "#EF6C00"),
+             ("臺南市", "#2E7D32"), ("高雄市", "#1E5BB8"), ("公路客運(國道/跨縣市)", "#7B1FA2")]
+
+
+def _set_city(name):
+    st.session_state["bus_city_name"] = name
+    st.session_state["bus_city_more"] = False
+
+
+def _other_city():
+    """「其他縣市」選單一改就先記住，按鈕的外框才會在同一次畫面更新時移到「其他地區」。"""
+    if st.session_state.get("bus_city_other"):
+        st.session_state["bus_city_name"] = st.session_state["bus_city_other"]
+
+
+def city_picker():
+    """回傳選好的縣市（中文名）。按鈕用 CSS 依 key 上色（Streamlit 會在外層加 st-key-<key> 這個 class）。"""
+    cur = st.session_state.get("bus_city_name", "臺南市")
+    main = [n for n, _ in CITY_BTNS]
+    css = []
+    for i, (name, color) in enumerate(CITY_BTNS):
+        ring = f"box-shadow:0 0 0 2px #fff,0 0 0 4px {color};" if name == cur else "opacity:.88;"
+        css.append(f".st-key-city_{i} button{{background:{color}!important;color:#fff!important;border:0!important;"
+                   f"border-radius:14px!important;font-weight:700!important;{ring}}}")
+    ring = "box-shadow:0 0 0 2px #fff,0 0 0 4px #E0A800;" if cur not in main else "opacity:.9;"
+    css.append(f".st-key-city_more button{{background:#F6C21C!important;color:#3B2F00!important;border:0!important;"
+               f"border-radius:14px!important;font-weight:700!important;{ring}}}")
+    st.markdown("<style>" + "".join(css) + "</style>", unsafe_allow_html=True)
+    with st.container(horizontal=True):
+        for i, (name, _) in enumerate(CITY_BTNS):
+            label = "公路客運" if name.startswith("公路") else name.replace("臺", "台")
+            st.button(label, key=f"city_{i}", icon=":material/directions_bus:", on_click=_set_city, args=(name,))
+        st.button("其他地區", key="city_more", icon=":material/map:",
+                  on_click=lambda: st.session_state.update(bus_city_more=True))
+    if cur not in main or st.session_state.get("bus_city_more"):
+        rest = [c for c in T.BUS_CITIES if c not in main]
+        pick = st.selectbox("其他縣市", rest, index=rest.index(cur) if cur in rest else None, placeholder="選縣市",
+                            key="bus_city_other", on_change=_other_city)
+        if pick:
+            cur = st.session_state["bus_city_name"] = pick
+    return cur
+
+
 def _zh_name(r):
     return T._zh(r.get("SubRouteName")) or T._zh(r.get("RouteName"))
 
@@ -2155,8 +2219,7 @@ if page == "🚌 公車":
         near_section()
         st.divider()
         st.markdown("#### 🔍 用路線號碼查")
-        cities = list(T.BUS_CITIES)
-        city_name = st.selectbox("縣市", cities, index=cities.index("臺南市"), key="bus_city")
+        city_name = city_picker()
         city = T.BUS_CITIES[city_name]
         routes = []
         try:
