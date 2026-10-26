@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-VERSION = "v8.5.3-到站說明"
+VERSION = "v8.5.4-功能列不再彈回"
 TW = timezone(timedelta(hours=8))
 UA = "streamlit-transit-planner/1.0 (personal project)"
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
@@ -1755,7 +1755,11 @@ PAGES = {"★ 常用": "fav", "🚌 公車": "bus", "🧭 路線規劃": "plan",
          "🚇 捷運": "metro", "🚲 YouBike": "bike"}
 _codes = {v: k for k, v in PAGES.items()}
 _p0 = _codes.get(st.query_params.get("p", ""), "★ 常用")
-page = st.segmented_control("功能", list(PAGES), default=_p0, key="page", label_visibility="collapsed") or _p0
+# 網址只在剛打開時讀一次：不能每次都把它當 default 傳進去——default 一變，元件會被當成新的而重設，
+# iPhone（我的助手 iframe 裡）點高鐵後會被彈回台鐵（2026-10-26）
+if "page" not in st.session_state:
+    st.session_state["page"] = _p0
+page = st.segmented_control("功能", list(PAGES), key="page", label_visibility="collapsed") or _p0
 if st.query_params.get("p") != PAGES[page]:
     st.query_params["p"] = PAGES[page]
 
