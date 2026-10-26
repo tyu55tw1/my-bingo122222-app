@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 
-VERSION = "v8.5.4-功能列不再彈回"
+VERSION = "v8.5.5-起訖站改一般輸入框"
 TW = timezone(timedelta(hours=8))
 UA = "streamlit-transit-planner/1.0 (personal project)"
 TOKEN_URL = "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token"
@@ -1915,10 +1915,9 @@ def _norm_station(t):
     return _RAIL_ALIAS.get(t, t)
 
 
-try:
-    from st_keyup import st_keyup          # 每打一個字就更新（不用按完成），候選站邊打邊出現
-except ImportError:
-    st_keyup = None
+# 不用 st_keyup（邊打邊出現候選站）：它在 iPhone 上一載入就連續觸發重跑，
+# 台鐵／高鐵頁會跳好幾秒（2026-10-26 查到高鐵頁 5 秒重跑約 30 次），改用一般輸入框，打完按「完成」
+st_keyup = None
 
 
 def _bump(key):
